@@ -1,0 +1,1 @@
+{"id": "leak-pacific-query", "tenant_id": "pacific-hmo", "iteration_min": 3, "fixture_claim_id": "CLAIM-PH-001", "audience": "member", "scenario": "leakage_test", "expected_outcome": "PARTIAL", "forbidden_doc_prefixes": ["coastal", "summit", "map", "statecare"], "rubric_min_scores": {"grounding": 4}}

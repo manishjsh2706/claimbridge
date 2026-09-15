@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ClaimBridge - LangGraph Node State Machine</title>
+</head>
+<body style="font-family: Arial, sans-serif; background: #f5f5f5; margin: 0; padding: 20px;">
+    <h1 style="text-align: center; color: #333;">ClaimBridge - LangGraph State Machine: 5 Nodes</h1>
+
+    <div style="max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+
+        <svg width="100%" height="1400" viewBox="0 0 1200 1400" style="border: 1px solid #ddd; border-radius: 4px;">
+            <defs>
+                <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                    <polygon points="0 0, 10 3, 0 6" fill="#333" />
+                </marker>
+                <marker id="arrowhead-green" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                    <polygon points="0 0, 10 3, 0 6" fill="#4CAF50" />
+                </marker>
+                <marker id="arrowhead-red" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                    <polygon points="0 0, 10 3, 0 6" fill="#F44336" />
+                </marker>
+                <linearGradient id="grad1" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" style="stop-color:#9C27B0;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#7b1fa2;stop-opacity:1" />
+                </linearGradient>
+                <linearGradient id="grad2" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" style="stop-color:#2196F3;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#0b7dda;stop-opacity:1" />
+                </linearGradient>
+            </defs>
+
+            <!-- Title -->
+            <text x="600" y="30" font-size="16" font-weight="bold" fill="#333" text-anchor="middle">Claim flows through state machine: Input → 5 Nodes → Output</text>
+
+            <!-- Input -->
+            <ellipse cx="600" cy="80" rx="80" ry="50" fill="#4CAF50" stroke="#333" stroke-width="2"/>
+            <text x="600" y="85" font-size="12" font-weight="bold" fill="white" text-anchor="middle">INPUT</text>
+            <text x="600" y="105" font-size="11" fill="white" text-anchor="middle">Claim Data</text>
+
+            <!-- Arrow to Node 1 -->
+            <line x1="600" y1="130" x2="600" y2="160" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+            <!-- NODE 1: VALIDATE -->
+            <g>
+                <rect x="450" y="160" width="300" height="140" rx="8" fill="url(#grad1)" stroke="#333" stroke-width="2"/>
+                <text x="600" y="185" font-size="14" font-weight="bold" fill="white" text-anchor="middle">NODE 1: VALIDATE</text>
+                <text x="600" y="210" font-size="12" fill="white" text-anchor="middle">Input: claim_data, tenant_id</text>
+                <text x="600" y="230" font-size="12" fill="white" text-anchor="middle">Action: MCP tool validate_claim()</text>
+                <text x="600" y="250" font-size="12" fill="white" text-anchor="middle">Output: validation_result</text>
+                <text x="600" y="270" font-size="11" fill="white" text-anchor="middle">Status: VALIDATED or INVALID</text>
+
+                <!-- Error path -->
+                <line x1="450" y1="230" x2="350" y2="230" stroke="#F44336" stroke-width="2" marker-end="url(#arrowhead-red)"/>
+                <text x="380" y="220" font-size="10" fill="#F44336" text-anchor="middle">INVALID</text>
+                <text x="380" y="235" font-size="10" fill="#F44336" text-anchor="middle">→ ERROR</text>
+            </g>
+
+            <!-- Arrow to Node 2 (Valid path) -->
+            <line x1="600" y1="300" x2="600" y2="330" stroke="#4CAF50" stroke-width="2" marker-end="url(#arrowhead-green)"/>
+            <text x="650" y="318" font-size="10" fill="#4CAF50" font-weight="bold">VALID ✓</text>
+
+            <!-- NODE 2: RETRIEVE -->
+            <g>
+                <rect x="450" y="330" width="300" height="160" rx="8" fill="url(#grad2)" stroke="#333" stroke-width="2"/>
+                <text x="600" y="355" font-size="14" font-weight="bold" fill="white" text-anchor="middle">NODE 2: RETRIEVE</text>
+                <text x="600" y="380" font-size="12" fill="white" text-anchor="middle">Input: claim data, tenant_id</text>
+                <text x="600" y="400" font-size="12" fill="white" text-anchor="middle">Action: VectorDB retrieval</text>
+                <text x="600" y="420" font-size="11" fill="white" text-anchor="middle">.where(tenant_id=...)</text>
+                <text x="600" y="440" font-size="12" fill="white" text-anchor="middle">Output: retrieved_policies (top-5)</text>
+                <text x="600" y="460" font-size="11" fill="white" text-anchor="middle">Status: RETRIEVED</text>
+            </g>
+
+            <!-- Arrow to Node 3 -->
+            <line x1="600" y1="490" x2="600" y2="520" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+            <!-- NODE 3: GENERATE MEMBER SUMMARY -->
+            <g>
+                <rect x="350" y="520" width="500" height="160" rx="8" fill="#FF9800" stroke="#333" stroke-width="2"/>
+                <text x="600" y="545" font-size="14" font-weight="bold" fill="white" text-anchor="middle">NODE 3: GENERATE MEMBER SUMMARY</text>
+                <text x="600" y="570" font-size="12" fill="white" text-anchor="middle">Input: claim_data, retrieved_policies, tenant_config</text>
+                <text x="600" y="590" font-size="12" fill="white" text-anchor="middle">Action: LLM call (GPT-4)</text>
+                <text x="600" y="610" font-size="11" fill="white" text-anchor="middle">Prompt: + plain language + citations + appeal window</text>
+                <text x="600" y="630" font-size="12" fill="white" text-anchor="middle">Output: member_summary JSON</text>
+                <text x="600" y="650" font-size="11" fill="white" text-anchor="middle">Status: SUMMARY_GENERATED</text>
+            </g>
+
+            <!-- Arrow to Node 4 -->
+            <line x1="600" y1="680" x2="600" y2="710" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+            <!-- NODE 4: QUALITY CHECK -->
+            <g>
+                <rect x="350" y="710" width="500" height="160" rx="8" fill="#F44336" stroke="#333" stroke-width="2"/>
+                <text x="600" y="735" font-size="14" font-weight="bold" fill="white" text-anchor="middle">NODE 4: QUALITY CHECK</text>
+                <text x="600" y="760" font-size="12" fill="white" text-anchor="middle">Input: member_summary, claim_data, policies</text>
+                <text x="600" y="780" font-size="12" fill="white" text-anchor="middle">Action: Rubric evaluation (7 dimensions)</text>
+                <text x="600" y="800" font-size="11" fill="white" text-anchor="middle">Accuracy, Citations, Safety, Tenant, Language, Action, Structure</text>
+                <text x="600" y="820" font-size="12" fill="white" text-anchor="middle">Output: quality_score (1-5 scale)</text>
+                <text x="600" y="840" font-size="11" fill="white" text-anchor="middle">Decision: PASS (≥3.5) or FAIL (&lt;3.5)</text>
+
+                <!-- Fail path -->
+                <line x1="350" y1="760" x2="250" y2="760" stroke="#F44336" stroke-width="2" marker-end="url(#arrowhead-red)"/>
+                <text x="275" y="750" font-size="10" fill="#F44336" text-anchor="middle">FAIL</text>
+                <text x="275" y="765" font-size="10" fill="#F44336" text-anchor="middle">→ REVIEW</text>
+            </g>
+
+            <!-- Arrow to Node 5 (Pass path) -->
+            <line x1="600" y1="870" x2="600" y2="900" stroke="#4CAF50" stroke-width="2" marker-end="url(#arrowhead-green)"/>
+            <text x="650" y="888" font-size="10" fill="#4CAF50" font-weight="bold">PASS ✓</text>
+
+            <!-- NODE 5: PUBLISH -->
+            <g>
+                <rect x="400" y="900" width="400" height="160" rx="8" fill="#4CAF50" stroke="#333" stroke-width="2"/>
+                <text x="600" y="925" font-size="14" font-weight="bold" fill="white" text-anchor="middle">NODE 5: PUBLISH</text>
+                <text x="600" y="950" font-size="12" fill="white" text-anchor="middle">Input: member_summary, quality_score</text>
+                <text x="600" y="970" font-size="12" fill="white" text-anchor="middle">Action 1: PostgreSQL INSERT</text>
+                <text x="600" y="990" font-size="11" fill="white" text-anchor="middle">Action 2: MCP log_audit_event()</text>
+                <text x="600" y="1010" font-size="12" fill="white" text-anchor="middle">Output: published record</text>
+                <text x="600" y="1030" font-size="11" fill="white" text-anchor="middle">Status: PUBLISHED</text>
+            </g>
+
+            <!-- Arrow to Output -->
+            <line x1="600" y1="1060" x2="600" y2="1090" stroke="#4CAF50" stroke-width="2" marker-end="url(#arrowhead-green)"/>
+
+            <!-- OUTPUT -->
+            <ellipse cx="600" cy="1140" rx="80" ry="50" fill="#4CAF50" stroke="#333" stroke-width="2"/>
+            <text x="600" y="1125" font-size="12" font-weight="bold" fill="white" text-anchor="middle">OUTPUT</text>
+            <text x="600" y="1145" font-size="11" fill="white" text-anchor="middle">Member Summary</text>
+            <text x="600" y="1165" font-size="11" fill="white" text-anchor="middle">(PUBLISHED)</text>
+
+            <!-- Error Handler -->
+            <text x="200" y="1250" font-size="12" font-weight="bold" fill="#333">Error Cases:</text>
+            <g>
+                <rect x="50" y="1270" width="300" height="100" rx="5" fill="#FFEBEE" stroke="#F44336" stroke-width="1"/>
+                <text x="200" y="1290" font-size="11" font-weight="bold" fill="#F44336" text-anchor="middle">If Node 1 fails (INVALID)</text>
+                <text x="200" y="1310" font-size="10" fill="#333" text-anchor="middle">→ Return 400 Bad Request</text>
+                <text x="200" y="1330" font-size="10" fill="#333" text-anchor="middle">→ Log error</text>
+                <text x="200" y="1350" font-size="10" fill="#333" text-anchor="middle">→ No LLM call (cost saving!)</text>
+            </g>
+
+            <g>
+                <rect x="400" y="1270" width="300" height="100" rx="5" fill="#FFEBEE" stroke="#F44336" stroke-width="1"/>
+                <text x="550" y="1290" font-size="11" font-weight="bold" fill="#F44336" text-anchor="middle">If Node 4 fails (Score &lt; 3.5)</text>
+                <text x="550" y="1310" font-size="10" fill="#333" text-anchor="middle">→ Store with status=NEEDS_REVIEW</text>
+                <text x="550" y="1330" font-size="10" fill="#333" text-anchor="middle">→ Alert human reviewer</text>
+                <text x="550" y="1350" font-size="10" fill="#333" text-anchor="middle">→ Audit logged</text>
+            </g>
+
+            <g>
+                <rect x="750" y="1270" width="300" height="100" rx="5" fill="#E8F5E9" stroke="#4CAF50" stroke-width="1"/>
+                <text x="900" y="1290" font-size="11" font-weight="bold" fill="#4CAF50" text-anchor="middle">Success Path</text>
+                <text x="900" y="1310" font-size="10" fill="#333" text-anchor="middle">✅ All 5 nodes execute</text>
+                <text x="900" y="1330" font-size="10" fill="#333" text-anchor="middle">✅ Output published</text>
+                <text x="900" y="1350" font-size="10" fill="#333" text-anchor="middle">✅ Audit trail recorded</text>
+            </g>
+
+        </svg>
+
+    </div>
+
+    <!-- State Transitions Table -->
+    <div style="max-width: 1200px; margin: 20px auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        <h3>📊 State Transitions Through Nodes</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+            <tr style="background: #f0f0f0;">
+                <th style="border: 1px solid #ddd; padding: 12px; text-align: left;">Node</th>
+                <th style="border: 1px solid #ddd; padding: 12px; text-align: left;">Input State</th>
+                <th style="border: 1px solid #ddd; padding: 12px; text-align: left;">Processing</th>
+                <th style="border: 1px solid #ddd; padding: 12px; text-align: left;">Output State</th>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 12px;">1. Validate</td>
+                <td style="border: 1px solid #ddd; padding: 12px;">claim_data, tenant_id</td>
+                <td style="border: 1px solid #ddd; padding: 12px;">Check required fields, member exists</td>
+                <td style="border: 1px solid #ddd; padding: 12px;">validation_result = {is_valid: true/false}</td>
+            </tr>
+            <tr style="background: #f9f9f9;">
+                <td style="border: 1px solid #ddd; padding: 12px;">2. Retrieve</td>
+                <td style="border: 1px solid #ddd; padding: 12px;">claim_data + validation_result</td>
+                <td style="border: 1px solid #ddd; padding: 12px;">Embed query + VectorDB search (tenant filter)</td>
+                <td style="border: 1px solid #ddd; padding: 12px;">retrieved_policies = [top-5 chunks]</td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 12px;">3. Generate</td>
+                <td style="border: 1px solid #ddd; padding: 12px;">claim_data + retrieved_policies</td>
+                <td style="border: 1px solid #ddd; padding: 12px;">LLM chain with tenant-specific config</td>
+                <td style="border: 1px solid #ddd; padding: 12px;">member_summary JSON (plain language + citations)</td>
+            </tr>
+            <tr style="background: #f9f9f9;">
+                <td style="border: 1px solid #ddd; padding: 12px;">4. Quality Check</td>
+                <td style="border: 1px solid #ddd; padding: 12px;">member_summary + claim_data</td>
+                <td style="border: 1px solid #ddd; padding: 12px;">Rubric evaluation (7 dimensions)</td>
+                <td style="border: 1px solid #ddd; padding: 12px;">quality_score, pass/fail decision</td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 12px;">5. Publish</td>
+                <td style="border: 1px solid #ddd; padding: 12px;">member_summary + quality_score</td>
+                <td style="border: 1px solid #ddd; padding: 12px;">INSERT DB + MCP audit log</td>
+                <td style="border: 1px solid #ddd; padding: 12px;">published = true, status = PUBLISHED</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- Interview Talking Points -->
+    <div style="max-width: 1200px; margin: 20px auto; background: #E3F2FD; padding: 20px; border-radius: 8px; border-left: 4px solid #2196F3;">
+        <h3 style="margin-top: 0; color: #1565C0;">🎤 Interview Talking Points</h3>
+        <p style="font-size: 13px; line-height: 1.8; color: #333;">
+            <strong>"I designed this as a LangGraph state machine with 5 discrete nodes. Each node is a testable, independent function that reads and updates the state. If validation fails at Node 1, we immediately return an error — we don't waste API calls. If Node 4 quality check fails, we flag for human review. This is production-ready error handling."</strong>
+        </p>
+    </div>
+</body>
+</html>

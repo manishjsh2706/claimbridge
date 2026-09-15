@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: claimbridge-postgres
+    environment:
+      POSTGRES_USER: claimbridge
+      POSTGRES_PASSWORD: claimbridge_password
+      POSTGRES_DB: claimbridge
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U claimbridge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  weaviate:
+    image: semitechnologies/weaviate:latest
+    container_name: claimbridge-weaviate
+    ports:
+      - "8080:8080"
+    environment:
+      QUERY_DEFAULTS_LIMIT: 20
+      DEFAULT_VECTORIZER_MODULE: text2vec-openai
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/v1/.well-known/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  claimbridge:
+    build: .
+    container_name: claimbridge-api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://claimbridge:claimbridge_password@postgres:5432/claimbridge
+      WEAVIATE_URL: http://weaviate:8080
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-placeholder}
+      DEBUG: "False"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      weaviate:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+
+volumes:
+  postgres_data:
+  weaviate_data:
