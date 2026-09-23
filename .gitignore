@@ -68,3 +68,6 @@ temp/
 # OS files
 Thumbs.db
 .DS_Store
+
+# Scratch folder from earlier Claude sessions (kept on disk, out of git)
+Claude outputs/
