@@ -1,0 +1,193 @@
+# ClaimBridge CI
+# =============
+# Three jobs run on every push and pull request and need no secrets:
+#   lint          - flake8, real errors only (undefined names, syntax), not style
+#   unit          - pytest tests/unit, deliberately WITHOUT DATABASE_URL or
+#                   OPENAI_API_KEY so a unit test that quietly starts needing a
+#                   database or the network fails here instead of in production
+#   docker-build  - the image in Dockerfile still builds
+#
+# The expensive job (e2e) spins up Postgres + Weaviate, runs the real
+# iteration-2 demo, the cross-tenant leakage suite and the golden eval with its
+# 85% gate. It costs OpenAI money, so it runs only on a manual dispatch or the
+# nightly schedule, and only when the OPENAI_API_KEY secret is set.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # 02:00 UTC = 07:30 IST
+    - cron: "0 2 * * *"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (errors, not style)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install flake8
+      # E9/F63/F7/F82 = syntax errors, undefined names, broken comparisons.
+      # Formatting (black/isort) is not enforced: the repo is not formatted yet
+      # and a red build for a blank line teaches people to ignore CI.
+      - name: flake8
+        run: flake8 src/claimbridge tests --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  unit:
+    name: Unit tests (no DB, no LLM)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: pytest tests/unit
+        run: pytest tests/unit -q
+
+  docker-build:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build
+        run: docker build -t claimbridge:ci .
+
+  preflight:
+    name: Is an OpenAI key configured?
+    runs-on: ubuntu-latest
+    outputs:
+      has_openai: ${{ steps.check.outputs.has_openai }}
+    steps:
+      # The `secrets` context cannot be used in a job-level `if`, so the answer
+      # is turned into a plain true/false output here. The key itself never
+      # leaves this step.
+      - id: check
+        env:
+          KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then
+            echo "has_openai=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_openai=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  e2e:
+    name: E2E + leakage + golden eval
+    needs: [unit, preflight]
+    if: >-
+      needs.preflight.outputs.has_openai == 'true' &&
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: claimbridge
+          POSTGRES_PASSWORD: claimbridge_password
+          POSTGRES_DB: claimbridge
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U claimbridge"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+      weaviate:
+        # Pinned: weaviate-client 4.23.1 is known to work against this server.
+        image: semitechnologies/weaviate:1.28.4
+        env:
+          QUERY_DEFAULTS_LIMIT: "20"
+          DEFAULT_VECTORIZER_MODULE: text2vec-openai
+          ENABLE_MODULES: text2vec-openai
+          # The vectorizer runs inside Weaviate, so Weaviate needs the key too.
+          OPENAI_APIKEY: ${{ secrets.OPENAI_API_KEY }}
+          AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+          PERSISTENCE_DATA_PATH: /var/lib/weaviate
+        ports:
+          # 50051 is gRPC. The v4 client queries over gRPC, not HTTP: without
+          # this port it connects and then every query times out.
+          - 8080:8080
+          - 50051:50051
+
+    env:
+      DATABASE_URL: postgresql://claimbridge:claimbridge_password@localhost:5432/claimbridge
+      WEAVIATE_URL: http://localhost:8080
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      LLM_MODEL: gpt-4o-mini
+      CLAIMBRIDGE_API_URL: http://localhost:8000
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Wait for Weaviate
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/v1/.well-known/ready > /dev/null; then
+              echo "Weaviate ready after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "Weaviate never became ready"; exit 1
+
+      - name: Migrate schema
+        run: alembic upgrade head
+
+      - name: Ingest tenant policies into Weaviate
+        run: python -m src.claimbridge.scripts.ingest_policies
+
+      - name: Seed tenants, claims and adjudications
+        run: python -m src.claimbridge.scripts.seed_reference_data
+
+      - name: Start the API
+        run: |
+          nohup uvicorn src.claimbridge.main:app --host 0.0.0.0 --port 8000 > api.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8000/health > /dev/null; then
+              echo "API ready after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "API never came up"; cat api.log; exit 1
+
+      - name: Iteration 2 demo (intake -> recommend -> drafts -> HITL publish)
+        run: python -m src.claimbridge.scripts.demo_iteration2
+
+      - name: Cross-tenant leakage suite
+        # Exit 0 = no leakage, 1 = leakage, 2 = inconclusive (a probe errored).
+        # Inconclusive must not be read as a pass, so anything non-zero fails.
+        run: python -m src.claimbridge.scripts.leakage_suite --no-llm
+
+      - name: Golden eval (11 cases, gpt-4o judge, 85% gate)
+        run: python -m src.claimbridge.scripts.run_golden_eval
+
+      - name: Upload eval reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-reports
+          path: eval-reports/
+          if-no-files-found: ignore
+
+      - name: API log (on failure)
+        if: failure()
+        run: tail -n 200 api.log || true

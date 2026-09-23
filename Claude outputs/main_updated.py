@@ -1,0 +1,372 @@
+"""
+ClaimBridge FastAPI Application - UPDATED with Company & Customer Isolation
+
+Main entry point for the AI claims processing system.
+Provides REST API endpoints for:
+- Health checks
+- Claim processing (single claim)
+- Batch claim processing
+- Multi-tenant isolation (Company + Customer)
+"""
+
+from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from typing import Optional, List
+import logging
+from datetime import datetime
+
+# Import LangGraph workflow
+from .langgraph.workflow import process_claim
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Create FastAPI app
+app = FastAPI(
+    title="ClaimBridge API",
+    description="AI-powered claims processing system with multi-tenant isolation",
+    version="1.0.0"
+)
+
+
+# ==================== PYDANTIC MODELS ====================
+
+class ClaimRequest(BaseModel):
+    """
+    Request model for processing a single claim
+
+    Example:
+    {
+        "claim_number": "CLM-2024-001",
+        "policy_number": "POL-123456",
+        "patient_name": "John Doe",
+        "amount": 5000.00,
+        "service_date": "2024-01-15",
+        "description": "Emergency room visit"
+    }
+    """
+    claim_number: str = Field(..., description="Unique claim identifier")
+    policy_number: str = Field(..., description="Insurance policy number")
+    patient_name: str = Field(..., description="Patient/claimant name")
+    amount: float = Field(..., gt=0, description="Claim amount in dollars")
+    service_date: str = Field(..., description="Date of service (YYYY-MM-DD)")
+    description: str = Field(..., description="Detailed claim description")
+
+
+class ClaimResponse(BaseModel):
+    """
+    Response model after processing a claim
+    """
+    company_id: str                # Insurance company
+    customer_id: str               # Claimant/Customer
+    claim_id: str
+    final_status: str              # APPROVED, REJECTED, PENDING
+    generated_response: str        # AI assessment
+    confidence_score: float        # 0-1
+    validation_errors: List[str]
+    quality_issues: List[str]
+    processing_log_id: Optional[int]
+    timestamp: datetime
+
+
+class HealthCheckResponse(BaseModel):
+    """Health check response"""
+    status: str
+    timestamp: datetime
+    version: str
+
+
+# ==================== MIDDLEWARE & SECURITY ====================
+
+def verify_company_id(x_company_id: Optional[str] = Header(None)) -> str:
+    """
+    Multi-tenant isolation: Verify company_id (insurance company) from request header
+
+    This is the PRIMARY tenant identifier.
+    ClaimBridge is a SaaS platform where each insurance company is a tenant.
+
+    Args:
+        x_company_id: Company/Insurance provider ID from HTTP header
+
+    Returns:
+        company_id (str)
+
+    Raises:
+        HTTPException: If company_id is missing
+    """
+    if not x_company_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing X-Company-Id header (insurance company ID required)"
+        )
+    return x_company_id
+
+
+def verify_customer_id(x_customer_id: Optional[str] = Header(None)) -> str:
+    """
+    Verify customer_id (claimant/policyholder) from request header
+
+    This identifies WHO is filing the claim within the insurance company's system.
+
+    Args:
+        x_customer_id: Customer/Claimant ID from HTTP header
+
+    Returns:
+        customer_id (str)
+
+    Raises:
+        HTTPException: If customer_id is missing
+    """
+    if not x_customer_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing X-Customer-Id header (claimant/policyholder ID required)"
+        )
+    return x_customer_id
+
+
+# ==================== ENDPOINTS ====================
+
+@app.get("/health", response_model=HealthCheckResponse, tags=["Health"])
+async def health_check():
+    """
+    Health check endpoint
+
+    Returns:
+        Status of the API and connected services
+    """
+    logger.info("Health check requested")
+
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow(),
+        "version": "1.0.0"
+    }
+
+
+@app.post("/claims/process", response_model=ClaimResponse, tags=["Claims"])
+async def process_claim_endpoint(
+    claim_request: ClaimRequest,
+    company_id: str = Depends(verify_company_id),
+    customer_id: str = Depends(verify_customer_id)
+) -> ClaimResponse:
+    """
+    Process a single claim through the AI pipeline
+
+    Endpoint: POST /claims/process
+
+    Headers (REQUIRED):
+        X-Company-Id: Insurance company identifier (SaaS customer)
+        X-Customer-Id: Claimant/Policyholder identifier
+
+    Body:
+        ClaimRequest with claim details
+
+    Returns:
+        ClaimResponse with processing results
+
+    Multi-tenant isolation:
+    - Customer A's request with Company X will NEVER see Company Y's data
+    - Each (Company, Customer) pair is isolated
+
+    Example:
+        curl -X POST "http://localhost:8000/claims/process" \
+          -H "X-Company-Id: hdfc-life" \
+          -H "X-Customer-Id: john-doe-12345" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "claim_number": "CLM-2024-001",
+            "policy_number": "POL-123456",
+            "patient_name": "John Doe",
+            "amount": 5000,
+            "service_date": "2024-01-15",
+            "description": "Emergency room visit"
+          }'
+    """
+
+    try:
+        logger.info(
+            f"Processing claim {claim_request.claim_number} "
+            f"for company={company_id}, customer={customer_id}"
+        )
+
+        # Generate unique claim ID: company-customer-claimnumber-timestamp
+        claim_id = f"{company_id}-{customer_id}-{claim_request.claim_number}-{int(datetime.utcnow().timestamp())}"
+
+        # Convert request to dict for workflow
+        raw_claim_data = claim_request.dict()
+
+        # Run claim through LangGraph pipeline
+        result = process_claim(
+            claim_id=claim_id,
+            company_id=company_id,          # NEW: Insurance company
+            customer_id=customer_id,        # NEW: Claimant
+            raw_claim_data=raw_claim_data
+        )
+
+        logger.info(
+            f"Claim {claim_id} processed successfully. "
+            f"Status: {result['final_status']}"
+        )
+
+        # Return formatted response
+        return ClaimResponse(
+            company_id=result["company_id"],
+            customer_id=result["customer_id"],
+            claim_id=result["claim_id"],
+            final_status=result["final_status"],
+            generated_response=result["generated_response"],
+            confidence_score=result["confidence_score"],
+            validation_errors=result["validation_errors"],
+            quality_issues=result["quality_issues"],
+            processing_log_id=result["processing_log_id"],
+            timestamp=datetime.utcnow()
+        )
+
+    except Exception as e:
+        logger.error(f"Error processing claim: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing claim: {str(e)}"
+        )
+
+
+@app.post("/claims/batch", tags=["Claims"])
+async def batch_process_claims(
+    claims: List[ClaimRequest],
+    company_id: str = Depends(verify_company_id),
+    customer_id: str = Depends(verify_customer_id)
+):
+    """
+    Process multiple claims in batch for a specific company and customer
+
+    Endpoint: POST /claims/batch
+
+    Headers (REQUIRED):
+        X-Company-Id: Insurance company identifier
+        X-Customer-Id: Claimant/Policyholder identifier
+
+    Body:
+        List of ClaimRequest objects
+
+    Returns:
+        List of ClaimResponse objects with batch summary
+
+    Note: Processing happens sequentially. For production scale,
+    consider using async processing with job queues (SQS, Celery, etc.)
+    """
+
+    logger.info(
+        f"Batch processing {len(claims)} claims "
+        f"for company={company_id}, customer={customer_id}"
+    )
+
+    results = []
+
+    for claim_request in claims:
+        try:
+            # Generate claim ID
+            claim_id = f"{company_id}-{customer_id}-{claim_request.claim_number}-{int(datetime.utcnow().timestamp())}"
+
+            # Process claim
+            result = process_claim(
+                claim_id=claim_id,
+                company_id=company_id,
+                customer_id=customer_id,
+                raw_claim_data=claim_request.dict()
+            )
+
+            # Add to results
+            results.append({
+                "claim_number": claim_request.claim_number,
+                "final_status": result["final_status"],
+                "confidence_score": result["confidence_score"],
+                "success": True
+            })
+
+        except Exception as e:
+            logger.error(
+                f"Error processing claim {claim_request.claim_number} "
+                f"for company={company_id}, customer={customer_id}: {str(e)}"
+            )
+            results.append({
+                "claim_number": claim_request.claim_number,
+                "error": str(e),
+                "success": False
+            })
+
+    return {
+        "company_id": company_id,
+        "customer_id": customer_id,
+        "total_claims": len(claims),
+        "successful": len([r for r in results if r.get("success", False)]),
+        "failed": len([r for r in results if not r.get("success", False)]),
+        "results": results
+    }
+
+
+# ==================== ERROR HANDLERS ====================
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    """Custom HTTP exception handler"""
+    logger.error(f"HTTP Exception: {exc.detail}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.detail}
+    )
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request, exc):
+    """Catch-all exception handler"""
+    logger.error(f"Unhandled exception: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error"}
+    )
+
+
+# ==================== STARTUP/SHUTDOWN ====================
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize app on startup"""
+    logger.info("ClaimBridge API starting up...")
+    logger.info("LangGraph workflow loaded and ready")
+    logger.info("Multi-tenant isolation enabled (Company + Customer)")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    logger.info("ClaimBridge API shutting down...")
+
+
+# ==================== ROOT ENDPOINT ====================
+
+@app.get("/", tags=["Info"])
+async def root():
+    """API root endpoint with documentation links"""
+    return {
+        "app": "ClaimBridge API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "redoc": "/redoc",
+        "openapi": "/openapi.json",
+        "isolation": "Multi-tenant (Company + Customer)"
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    # Run with: uvicorn src.claimbridge.main:app --reload
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="info"
+    )

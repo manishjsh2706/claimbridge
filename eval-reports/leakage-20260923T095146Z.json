@@ -1,0 +1,133 @@
+{
+  "run_id": "20260923T095146Z",
+  "tenants": [
+    "coastal-ppo",
+    "pacific-hmo",
+    "summit-employer"
+  ],
+  "checks": [
+    {
+      "layer": "L1",
+      "check": "coastal-ppo: 35 hits over 5 probes, 0 foreign",
+      "passed": true,
+      "detail": "no hits at all"
+    },
+    {
+      "layer": "L1",
+      "check": "pacific-hmo: 40 hits over 5 probes, 0 foreign",
+      "passed": true,
+      "detail": "no hits at all"
+    },
+    {
+      "layer": "L1",
+      "check": "summit-employer: 14 hits over 5 probes, 0 foreign",
+      "passed": true,
+      "detail": "no hits at all"
+    },
+    {
+      "layer": "L2",
+      "check": "coastal-ppo asking for pacific-hmo's CLAIM-PH-001 -> 404",
+      "passed": true,
+      "detail": "HTTP 404: {\"error\":\"Claim 'CLAIM-PH-001' not found for tenant 'coastal-ppo'\"}"
+    },
+    {
+      "layer": "L2",
+      "check": "coastal-ppo asking for summit-employer's CLAIM-SE-001 -> 404",
+      "passed": true,
+      "detail": "HTTP 404: {\"error\":\"Claim 'CLAIM-SE-001' not found for tenant 'coastal-ppo'\"}"
+    },
+    {
+      "layer": "L2",
+      "check": "pacific-hmo asking for coastal-ppo's CLAIM-CP-001 -> 404",
+      "passed": true,
+      "detail": "HTTP 404: {\"error\":\"Claim 'CLAIM-CP-001' not found for tenant 'pacific-hmo'\"}"
+    },
+    {
+      "layer": "L2",
+      "check": "pacific-hmo asking for summit-employer's CLAIM-SE-001 -> 404",
+      "passed": true,
+      "detail": "HTTP 404: {\"error\":\"Claim 'CLAIM-SE-001' not found for tenant 'pacific-hmo'\"}"
+    },
+    {
+      "layer": "L2",
+      "check": "summit-employer asking for coastal-ppo's CLAIM-CP-001 -> 404",
+      "passed": true,
+      "detail": "HTTP 404: {\"error\":\"Claim 'CLAIM-CP-001' not found for tenant 'summit-employer'\"}"
+    },
+    {
+      "layer": "L2",
+      "check": "summit-employer asking for pacific-hmo's CLAIM-PH-001 -> 404",
+      "passed": true,
+      "detail": "HTTP 404: {\"error\":\"Claim 'CLAIM-PH-001' not found for tenant 'summit-employer'\"}"
+    },
+    {
+      "layer": "L2",
+      "check": "cross-tenant probes recorded in the audit trail",
+      "passed": true,
+      "detail": "6 events"
+    },
+    {
+      "layer": "L3",
+      "check": "coastal-ppo key on pacific-hmo route -> 403",
+      "passed": true,
+      "detail": "HTTP 403"
+    },
+    {
+      "layer": "L3",
+      "check": "pacific-hmo key on coastal-ppo route -> 403",
+      "passed": true,
+      "detail": "HTTP 403"
+    },
+    {
+      "layer": "L3",
+      "check": "summit-employer key on coastal-ppo route -> 403",
+      "passed": true,
+      "detail": "HTTP 403"
+    },
+    {
+      "layer": "L3",
+      "check": "coastal-ppo review queue holds only its own drafts (0)",
+      "passed": true,
+      "detail": "foreign rows []"
+    },
+    {
+      "layer": "L3",
+      "check": "pacific-hmo review queue holds only its own drafts (5)",
+      "passed": true,
+      "detail": "foreign rows []"
+    },
+    {
+      "layer": "L3",
+      "check": "summit-employer review queue holds only its own drafts (0)",
+      "passed": true,
+      "detail": "foreign rows []"
+    },
+    {
+      "layer": "L4",
+      "check": "coastal communication for a Pacific claim is rejected",
+      "passed": true,
+      "detail": "(psycopg2.errors.ForeignKeyViolation) insert or update on table \"communications\" violates foreign key constraint \"fk_com"
+    },
+    {
+      "layer": "L5",
+      "check": "coastal-ppo: 5 sources cited/retrieved, 0 foreign",
+      "passed": true,
+      "detail": "foreign: []"
+    },
+    {
+      "layer": "L5",
+      "check": "pacific-hmo: 5 sources cited/retrieved, 0 foreign",
+      "passed": true,
+      "detail": "foreign: []"
+    },
+    {
+      "layer": "L5",
+      "check": "summit-employer: 5 sources cited/retrieved, 0 foreign",
+      "passed": true,
+      "detail": "foreign: []"
+    }
+  ],
+  "passed": 20,
+  "failed": 0,
+  "llm_checks": true
+}

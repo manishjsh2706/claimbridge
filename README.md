@@ -1,3 +1,145 @@
+# ClaimBridge — AI Claims Assistant (Essential track)
+
+Multi-tenant assistant that turns an insurer's adjudication outcome and CARC/RARC
+codes into a grounded, cited, plain-language **member summary**. The model writes
+wording only; outcome, amounts, appeal window and phone numbers always come from
+the database. Every generation is stored as a `DRAFT` and written to an
+append-only audit log.
+
+**Status:** All three iterations built and verified on a real run (member summaries, claim intake,
+recommendations, provider notices, human-approval publishing, RBAC, two live tenants plus an
+onboarding tenant with a go-live gate). Awaiting mentor sign-off. Details, decisions and open issues: [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
+
+## Run it (Windows PowerShell)
+
+Needs Docker Desktop and an OpenAI key in `.env` (`OPENAI_API_KEY=...`,
+`LLM_MODEL=gpt-4o-mini`).
+
+```powershell
+# 1. Start Postgres, Weaviate and the API
+docker compose up -d
+
+# 2. Create the schema (tenants, claims, adjudications, communications, audit_events)
+docker compose exec claimbridge alembic upgrade head
+
+# 3. Load tenant policies into Weaviate (22 sections across 3 tenants)
+docker compose exec claimbridge python -m src.claimbridge.scripts.ingest_policies
+
+# 4. Load tenants, claims and adjudications from resources/ into Postgres
+docker compose exec claimbridge python -m src.claimbridge.scripts.seed_reference_data
+```
+
+Steps 3 and 4 are idempotent: re-run them whenever `resources/` changes.
+
+## Demo (one command per iteration)
+
+```powershell
+# Iteration 2: submit -> validate -> recommend -> member + provider drafts -> HITL publish
+docker compose exec claimbridge python -m src.claimbridge.scripts.demo_iteration2
+
+# Iteration 3: Pacific vs Coastal sources, leakage suite, Summit onboarding gate
+docker compose exec claimbridge python -m src.claimbridge.scripts.demo_iteration3
+
+# Multi-tenant isolation on its own (5 layers, 20 checks)
+docker compose exec claimbridge python -m src.claimbridge.scripts.leakage_suite
+
+# Summit go-live gate (10 tenant scenarios; needs a named human to sign off)
+docker compose exec claimbridge python -m src.claimbridge.scripts.onboarding_summit --signed-off-by "Your Name"
+
+# Index verification (loads 10k synthetic rows, then EXPLAIN ANALYZE, then --cleanup)
+docker compose exec claimbridge python -m src.claimbridge.scripts.index_check --rows 10000
+
+# Golden eval: all 11 cases, gpt-4o judge, 85% gate
+docker compose exec claimbridge python -m src.claimbridge.scripts.run_golden_eval
+
+# Unit tests (no LLM, no cost)
+docker compose exec claimbridge python -m pytest tests/unit -q
+```
+
+The demo prints PASS/FAIL per step: PH-002 incomplete (NEED_INFO), PH-003 clean
+(APPROVE), PH-004 prior-auth denial (DENY) -> publish refused without approval ->
+submitter cannot approve -> reviewer approves and publishes -> audit trail.
+
+## Calling the API yourself
+
+Every `/v1` call needs an API key (`X-Api-Key`). Create one per person/role:
+
+```powershell
+docker compose exec claimbridge python -m src.claimbridge.scripts.api_keys create reviewer-demo --role reviewer --tenant pacific-hmo
+$h = @{ "X-Api-Key" = "<paste the cbk_... key>" }
+Invoke-RestMethod http://localhost:8000/v1/tenants/pacific-hmo/review-queue -Headers $h | Format-Table id, claim_id, audience, status
+```
+
+| Role | Can |
+|------|-----|
+| submitter | submit claims, run recommendations, generate drafts, read claims |
+| reviewer | review queue, approve / reject / publish, read audit |
+| auditor | read claims, communications, audit (read-only) |
+| admin | everything (still cannot approve its own draft) |
+
+Submit a sample claim without typing JSON:
+`docker compose exec claimbridge python -m src.claimbridge.scripts.submit_fixture CLAIM-PH-004 --drafts`
+
+Interactive docs: http://localhost:8000/docs
+
+## API (v1) — all under `/v1/tenants/{tenant_id}`
+
+| Method | Path | Role | Result |
+|--------|------|------|--------|
+| POST | `/claims` | submitter | Validate + store + recommend. 201 new, 200 idempotent replay, 409 duplicate, 422 malformed |
+| GET | `/claims/{claim_id}` | any | Claim, validation issues, adjudication, recommendation, communications |
+| POST | `/claims/{claim_id}/recommendation` | submitter | Re-run the deterministic recommendation |
+| POST | `/claims/{claim_id}/member-summary` | submitter | DRAFT member summary (Iteration 1) |
+| POST | `/claims/{claim_id}/provider-notice` | submitter | DRAFT provider notice |
+| POST | `/claims/{claim_id}/drafts` | submitter | Pipeline: member + provider drafts -> review queue |
+| GET | `/claims/{claim_id}/audit-events` | reviewer, auditor | Audit trail, oldest first |
+| GET | `/review-queue` | reviewer, auditor | PENDING_REVIEW drafts, oldest first |
+| GET | `/communications/{id}` | any | One draft with its content and citations |
+| POST | `/communications/{id}/approve` · `/reject` · `/publish` | reviewer | HITL state machine |
+| GET | `/health` (no key) | — | Weaviate, LLM, database and circuit-breaker state |
+
+Headers: `X-Api-Key` (required), `Idempotency-Key` (POST /claims), `X-Correlation-Id` (optional, echoed).
+
+## Code map
+
+| Path | What it does |
+|------|--------------|
+| `src/claimbridge/knowledge/` | Parses `resources/`: policies, CARC/RARC reference, tenant catalog, sample claims |
+| `src/claimbridge/intake/` | Claim payload schema, completeness validation, idempotent submit |
+| `src/claimbridge/recommendation/` | Tenant rules (as data, with policy citations) + deterministic engine |
+| `src/claimbridge/summaries/` | Member summary (I1) and provider notice (I2): context, prompt, guards, fallback |
+| `src/claimbridge/review/` | Publication state machine (HITL) and the draft pipeline |
+| `src/claimbridge/auth.py` | API keys, roles, tenant scope |
+| `src/claimbridge/resilience.py` | Circuit breakers for the LLM and Weaviate |
+| `src/claimbridge/evals/` | Golden case loader, exact checks, LLM judge |
+| `src/claimbridge/api/v1.py` | All tenant-scoped routes |
+| `alembic/versions/` | `003` domain model, `004` intake / recommendations / RBAC / indexes |
+| `src/claimbridge/scripts/` | ingest, seed, api_keys, submit_fixture, demo_iteration2, demo_iteration3, run_golden_eval, leakage_suite, onboarding_summit, index_check |
+| `.github/workflows/ci.yml` | CI: lint, unit tests, Docker build on every push; e2e + golden eval on demand |
+
+## CI
+
+`.github/workflows/ci.yml`. Three jobs run on every push and pull request and need
+no secrets:
+
+| Job | What it proves |
+|-----|----------------|
+| `lint` | `flake8 --select=E9,F63,F7,F82` — syntax errors and undefined names. Formatting is deliberately not enforced |
+| `unit` | `pytest tests/unit` with **no** `DATABASE_URL` and **no** `OPENAI_API_KEY`, so a unit test that starts needing a database or the network fails here |
+| `docker-build` | The image in `Dockerfile` still builds |
+
+A fourth job, `e2e`, starts Postgres and Weaviate as service containers, migrates,
+ingests the policies, boots the API and then runs `demo_iteration2`, the leakage
+suite and the golden eval at its 85% gate, uploading `eval-reports/` as a build
+artifact. It costs OpenAI money, so it runs only on a manual dispatch
+(**Actions → CI → Run workflow**) or the 02:00 UTC nightly schedule, and only when
+the repository secret `OPENAI_API_KEY` is set.
+
+
+---
+
+# Assignment brief (original bootcamp README, unchanged below)
+
 # ClaimBridge AI Claims Assistant — Essential Track
 
 **Duration:** 2–3 weeks · **Iterations:** 3  

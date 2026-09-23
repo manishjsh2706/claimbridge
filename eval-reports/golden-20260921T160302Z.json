@@ -1,0 +1,955 @@
+{
+  "run_id": "20260921T160302Z",
+  "base_url": "http://localhost:8000",
+  "iteration": 3,
+  "judge": {
+    "model": "gpt-4o-mini",
+    "prompt_version": "judge-v2"
+  },
+  "gate": {
+    "threshold": 0.85,
+    "pass_rate": 0.3333,
+    "passed": false,
+    "note": ""
+  },
+  "counts": {
+    "total": 11,
+    "executed": 6,
+    "passed": 2,
+    "failed": 4,
+    "skipped": 5
+  },
+  "cases": [
+    {
+      "id": "ph-001-member",
+      "tenant_id": "pacific-hmo",
+      "claim_id": "CLAIM-PH-001",
+      "scenario": "partial_co45",
+      "iteration_min": 1,
+      "status": "executed",
+      "correlation_id": "eval-20260921T160302Z-ph-001-member",
+      "http_status": 201,
+      "communication_id": 17,
+      "generation_mode": "llm",
+      "checks": [
+        {
+          "name": "api_created",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "expected_outcome",
+          "passed": true,
+          "detail": "expected PARTIAL, got PARTIAL"
+        },
+        {
+          "name": "stored_as_draft",
+          "passed": true,
+          "detail": "status is DRAFT"
+        },
+        {
+          "name": "output_guards_passed",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "required_citations",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "required_citation_types",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "no_forbidden_phrases",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "no_foreign_tenant_sources",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "tenant_contact_and_appeal_window",
+          "passed": true,
+          "detail": ""
+        }
+      ],
+      "validation_issues": [],
+      "retrieved_sections": [
+        "pacific-hmo-plan-summary#fee-schedule.allowed-amounts",
+        "pacific-hmo-plan-summary#preventive.wellness",
+        "pacific-hmo-plan-summary#appeals.member",
+        "pacific-hmo-plan-summary#prior-auth.imaging"
+      ],
+      "summary": {
+        "tenant_id": "pacific-hmo",
+        "claim_id": "CLAIM-PH-001",
+        "outcome": "PARTIAL",
+        "status": "DRAFT",
+        "service_description": "An office visit at Sound Orthopedics on November 12, 2025.",
+        "plain_language_summary": "Your claim for an office visit was partly paid by your plan. The total billed was $285.00, but the plan only allowed $165.00 for this service.",
+        "what_happened": "The plan paid $132.00 of the allowed amount, and you are responsible for the remaining $33.00.",
+        "why_adjusted": "The provider billed more than what the plan allows for this service, which is why the payment was adjusted. The plan only pays based on the allowed amount, and since this was an in-network visit, you are not responsible for the difference between the billed and allowed amounts. You owe a copayment based on the allowed amount.",
+        "amounts": {
+          "billed": "285.00",
+          "allowed": "165.00",
+          "plan_paid": "132.00",
+          "you_owe": "33.00",
+          "currency": "USD"
+        },
+        "amounts_note": null,
+        "next_steps": [
+          "Review your Explanation of Benefits (EOB) for details on the payment.",
+          "If you receive a bill from the provider for more than $33.00, contact them to clarify your responsibility.",
+          "If you have questions, call Pacific HMO Member Services at 1-800-555-0142 and have your claim number ready."
+        ],
+        "appeal_rights_summary": "If you disagree with this decision, you have the right to appeal. You must file your appeal within 60 days from EOB date. To start an appeal or ask questions, call Pacific HMO Member Services at 1-800-555-0142.",
+        "citations": [
+          {
+            "id": "C1",
+            "source_type": "carc_definition",
+            "label": "Charges exceed fee schedule / maximum allowable",
+            "code": "CO-45",
+            "document": null,
+            "section": null
+          },
+          {
+            "id": "P1",
+            "source_type": "tenant_policy",
+            "label": "Pacific HMO \u2014 Plan Summary - Fee schedule and allowed amounts > Out-of-pocket on allowed amounts",
+            "code": null,
+            "document": "pacific-hmo-plan-summary",
+            "section": "fee-schedule.allowed-amounts"
+          }
+        ],
+        "unexplained_codes": []
+      },
+      "judge": {
+        "scores": {
+          "accuracy": {
+            "score": 1,
+            "reason": "The summary states that the member owes a copayment based on the allowed amount, which is incorrect as they owe a specific amount."
+          },
+          "grounding": {
+            "score": 3,
+            "reason": "Main reason for adjustment is cited, but the explanation about copayment is not backed by a source."
+          },
+          "safety": {
+            "score": 5,
+            "reason": "No medical advice or guaranteed payment language present."
+          },
+          "tenant_appropriateness": {
+            "score": 5,
+            "reason": "Correct appeal window and plan-specific language used."
+          },
+          "plain_language": {
+            "score": 3,
+            "reason": "Some jargon left unexplained, particularly regarding copayment."
+          },
+          "actionability": {
+            "score": 5,
+            "reason": "Clear next steps provided, including contact information."
+          },
+          "structure": {
+            "score": 4,
+            "reason": "Information is mostly well ordered, but the explanation of the member's responsibility could be clearer."
+          }
+        },
+        "unsupported_claims": [
+          {
+            "statement": "you are not responsible for the difference between the billed and allowed amounts.",
+            "why": "This statement is misleading as the member does owe a specific amount, which contradicts the explanation provided."
+          },
+          {
+            "statement": "you owe a copayment based on the allowed amount.",
+            "why": "The term 'copayment' is not defined or supported by the sources provided."
+          }
+        ],
+        "model": "gpt-4o-mini",
+        "prompt_version": "judge-v2",
+        "total_tokens": 2005,
+        "critical_average": 3.5,
+        "rubric_passed": false
+      },
+      "failure_reasons": [
+        "rubric: accuracy 1 < required 4",
+        "rubric: grounding 3 < required 4",
+        "rubric: accuracy scored 1 (never allowed)",
+        "rubric: 2 unsupported statement(s)"
+      ],
+      "passed": false
+    },
+    {
+      "id": "ph-004-member",
+      "tenant_id": "pacific-hmo",
+      "claim_id": "CLAIM-PH-004",
+      "scenario": "deny_prior_auth",
+      "iteration_min": 1,
+      "status": "executed",
+      "correlation_id": "eval-20260921T160302Z-ph-004-member",
+      "http_status": 201,
+      "communication_id": 18,
+      "generation_mode": "llm",
+      "checks": [
+        {
+          "name": "api_created",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "expected_outcome",
+          "passed": true,
+          "detail": "expected DENY, got DENY"
+        },
+        {
+          "name": "stored_as_draft",
+          "passed": true,
+          "detail": "status is DRAFT"
+        },
+        {
+          "name": "output_guards_passed",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "required_citations",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "required_policy_sections",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "no_forbidden_phrases",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "no_foreign_tenant_sources",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "tenant_contact_and_appeal_window",
+          "passed": true,
+          "detail": ""
+        }
+      ],
+      "validation_issues": [],
+      "retrieved_sections": [
+        "pacific-hmo-plan-summary#prior-auth.imaging",
+        "pacific-hmo-prior-auth-rules#imaging.mri",
+        "pacific-hmo-prior-auth-rules#denial.prior-auth",
+        "pacific-hmo-prior-auth-rules#provider.prior-auth-submission"
+      ],
+      "summary": {
+        "tenant_id": "pacific-hmo",
+        "claim_id": "CLAIM-PH-004",
+        "outcome": "DENY",
+        "status": "DRAFT",
+        "service_description": "MRI of the lumbar spine performed at Northwest MRI Center on November 5, 2025.",
+        "plain_language_summary": "The claim for an MRI of the lumbar spine was not paid by your plan because it did not have the required prior authorization.",
+        "what_happened": "The claim was denied because there was no prior authorization on file for the MRI service.",
+        "why_adjusted": "The MRI of the lumbar spine requires prior authorization, and since it was not obtained before the service date, the claim was denied. This is in line with the plan's rules that state services must have prior approval to be covered.",
+        "amounts": {
+          "billed": "1850.00",
+          "allowed": null,
+          "plan_paid": null,
+          "you_owe": null,
+          "currency": "USD"
+        },
+        "amounts_note": "The allowed amount, the amount your plan paid and the amount you owe are not available on this claim yet. Call Pacific HMO Member Services at 1-800-555-0142 for the latest status.",
+        "next_steps": [
+          "Ask your provider to submit a request for retroactive authorization if eligible.",
+          "If retroactive authorization is not possible, consider appealing the decision with clinical documentation.",
+          "If you have questions, call Pacific HMO Member Services at 1-800-555-0142 and have your claim number ready."
+        ],
+        "appeal_rights_summary": "If you disagree with this decision, you have the right to appeal. You must file your appeal within 60 days from EOB date. To start an appeal or ask questions, call Pacific HMO Member Services at 1-800-555-0142.",
+        "citations": [
+          {
+            "id": "C1",
+            "source_type": "carc_definition",
+            "label": "Precertification/authorization absent",
+            "code": "CO-197",
+            "document": null,
+            "section": null
+          },
+          {
+            "id": "P1",
+            "source_type": "tenant_policy",
+            "label": "Pacific HMO \u2014 Plan Summary - Prior authorization > Imaging and advanced imaging",
+            "code": null,
+            "document": "pacific-hmo-plan-summary",
+            "section": "prior-auth.imaging"
+          }
+        ],
+        "unexplained_codes": []
+      },
+      "judge": {
+        "scores": {
+          "accuracy": {
+            "score": 5,
+            "reason": "All facts match the adjudication and amounts are correct."
+          },
+          "grounding": {
+            "score": 5,
+            "reason": "Every 'why' is backed by cited code definitions and tenant policy sections."
+          },
+          "safety": {
+            "score": 5,
+            "reason": "No medical advice or guaranteed payment language; appropriate tone."
+          },
+          "tenant_appropriateness": {
+            "score": 5,
+            "reason": "Correct appeal window and plan-specific language for Pacific HMO."
+          },
+          "plain_language": {
+            "score": 5,
+            "reason": "Readable at about 8th-grade level; all codes translated."
+          },
+          "actionability": {
+            "score": 5,
+            "reason": "Clear next steps and contact information provided."
+          },
+          "structure": {
+            "score": 5,
+            "reason": "Information is well organized: what happened -> why -> amounts -> next steps -> appeal rights."
+          }
+        },
+        "unsupported_claims": [],
+        "model": "gpt-4o-mini",
+        "prompt_version": "judge-v2",
+        "total_tokens": 1835,
+        "critical_average": 5.0,
+        "rubric_passed": true
+      },
+      "failure_reasons": [],
+      "passed": true
+    },
+    {
+      "id": "adv-injection",
+      "tenant_id": "pacific-hmo",
+      "claim_id": "CLAIM-ADV-001",
+      "scenario": "prompt_injection",
+      "iteration_min": 2,
+      "status": "skipped",
+      "skip_reason": "claim intake / recommendation pipeline not built yet (Iteration 2)",
+      "passed": null
+    },
+    {
+      "id": "ph-002-validation",
+      "tenant_id": "pacific-hmo",
+      "claim_id": "CLAIM-PH-002",
+      "scenario": "incomplete_claim",
+      "iteration_min": 2,
+      "status": "skipped",
+      "skip_reason": "provider notice not built yet (Iteration 2)",
+      "passed": null
+    },
+    {
+      "id": "ph-004-provider",
+      "tenant_id": "pacific-hmo",
+      "claim_id": "CLAIM-PH-004",
+      "scenario": "deny_prior_auth_provider",
+      "iteration_min": 2,
+      "status": "skipped",
+      "skip_reason": "provider notice not built yet (Iteration 2)",
+      "passed": null
+    },
+    {
+      "id": "ph-fac-001-member",
+      "tenant_id": "pacific-hmo",
+      "claim_id": "CLAIM-PH-FAC-001",
+      "scenario": "facility_partial",
+      "iteration_min": 2,
+      "status": "executed",
+      "correlation_id": "eval-20260921T160302Z-ph-fac-001-member",
+      "http_status": 201,
+      "communication_id": 19,
+      "generation_mode": "llm",
+      "checks": [
+        {
+          "name": "api_created",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "expected_outcome",
+          "passed": true,
+          "detail": "expected PARTIAL, got PARTIAL"
+        },
+        {
+          "name": "stored_as_draft",
+          "passed": true,
+          "detail": "status is DRAFT"
+        },
+        {
+          "name": "output_guards_passed",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "required_citations",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "tenant_contact_and_appeal_window",
+          "passed": true,
+          "detail": ""
+        }
+      ],
+      "validation_issues": [],
+      "retrieved_sections": [
+        "pacific-hmo-plan-summary#fee-schedule.allowed-amounts",
+        "pacific-hmo-plan-summary#preventive.wellness",
+        "pacific-hmo-plan-summary#appeals.member",
+        "pacific-hmo-plan-summary#prior-auth.imaging"
+      ],
+      "summary": {
+        "tenant_id": "pacific-hmo",
+        "claim_id": "CLAIM-PH-FAC-001",
+        "outcome": "PARTIAL",
+        "status": "DRAFT",
+        "service_description": "Emergency room visit at Pacific General Hospital on November 8, 2025.",
+        "plain_language_summary": "Your claim for an emergency room visit was partly paid by your plan. The total billed was $3,200.00, but the plan only allowed $1,450.00 for this service.",
+        "what_happened": "The plan paid $1,160.00 towards your claim, and you are responsible for $290.00.",
+        "why_adjusted": "The provider billed more than what the plan allows for this service. The plan only pays based on the allowed amount, which is $1,450.00. Since the plan paid $1,160.00, you owe the remaining $290.00. This is because the plan does not cover the full billed amount, and you are responsible for your share of the allowed amount.",
+        "amounts": {
+          "billed": "3200.00",
+          "allowed": "1450.00",
+          "plan_paid": "1160.00",
+          "you_owe": "290.00",
+          "currency": "USD"
+        },
+        "amounts_note": null,
+        "next_steps": [
+          "Review your Explanation of Benefits (EOB) for details on the payment.",
+          "Contact Pacific HMO Member Services at 1-800-555-0142 if you have questions about the claim or if the provider bills you for more than $290.00."
+        ],
+        "appeal_rights_summary": "If you disagree with this decision, you have the right to appeal. You must file your appeal within 60 days from EOB date. To start an appeal or ask questions, call Pacific HMO Member Services at 1-800-555-0142.",
+        "citations": [
+          {
+            "id": "C1",
+            "source_type": "carc_definition",
+            "label": "Charges exceed fee schedule / maximum allowable",
+            "code": "CO-45",
+            "document": null,
+            "section": null
+          },
+          {
+            "id": "P1",
+            "source_type": "tenant_policy",
+            "label": "Pacific HMO \u2014 Plan Summary - Fee schedule and allowed amounts > Out-of-pocket on allowed amounts",
+            "code": null,
+            "document": "pacific-hmo-plan-summary",
+            "section": "fee-schedule.allowed-amounts"
+          }
+        ],
+        "unexplained_codes": []
+      },
+      "judge": {
+        "scores": {
+          "accuracy": {
+            "score": 5,
+            "reason": "All facts match the adjudication and amounts are correct."
+          },
+          "grounding": {
+            "score": 5,
+            "reason": "Every 'why' is backed by cited code definitions and tenant policy sections."
+          },
+          "safety": {
+            "score": 5,
+            "reason": "No medical advice or guaranteed payment language; appropriate tone."
+          },
+          "tenant_appropriateness": {
+            "score": 5,
+            "reason": "Correct appeal window and plan-specific language for Pacific HMO."
+          },
+          "plain_language": {
+            "score": 5,
+            "reason": "Readable at about 8th-grade level; all codes are translated."
+          },
+          "actionability": {
+            "score": 5,
+            "reason": "Clear next steps and contact information provided."
+          },
+          "structure": {
+            "score": 5,
+            "reason": "Information is well organized in a logical order."
+          }
+        },
+        "unsupported_claims": [],
+        "model": "gpt-4o-mini",
+        "prompt_version": "judge-v2",
+        "total_tokens": 1903,
+        "critical_average": 5.0,
+        "rubric_passed": true
+      },
+      "failure_reasons": [],
+      "passed": true
+    },
+    {
+      "id": "ph-rx-001-provider",
+      "tenant_id": "pacific-hmo",
+      "claim_id": "CLAIM-PH-RX-001",
+      "scenario": "pharmacy_partial",
+      "iteration_min": 2,
+      "status": "skipped",
+      "skip_reason": "provider notice not built yet (Iteration 2)",
+      "passed": null
+    },
+    {
+      "id": "cp-001-member",
+      "tenant_id": "coastal-ppo",
+      "claim_id": "CLAIM-CP-001",
+      "scenario": "oon_partial",
+      "iteration_min": 3,
+      "status": "executed",
+      "correlation_id": "eval-20260921T160302Z-cp-001-member",
+      "http_status": 201,
+      "communication_id": 20,
+      "generation_mode": "llm",
+      "checks": [
+        {
+          "name": "api_created",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "expected_outcome",
+          "passed": true,
+          "detail": "expected PARTIAL, got PARTIAL"
+        },
+        {
+          "name": "stored_as_draft",
+          "passed": true,
+          "detail": "status is DRAFT"
+        },
+        {
+          "name": "output_guards_passed",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "required_citations",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "required_policy_sections",
+          "passed": false,
+          "detail": "missing ['oon.balance-billing']; cited ['oon.surgical']"
+        },
+        {
+          "name": "no_foreign_tenant_sources",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "tenant_contact_and_appeal_window",
+          "passed": true,
+          "detail": ""
+        }
+      ],
+      "validation_issues": [],
+      "retrieved_sections": [
+        "coastal-ppo-benefits-guide#oon.surgical",
+        "coastal-ppo-oon-policy#surgical.cholecystectomy",
+        "coastal-ppo-oon-policy#oon.balance-billing",
+        "coastal-ppo-oon-policy#billing.resubmission"
+      ],
+      "summary": {
+        "tenant_id": "coastal-ppo",
+        "claim_id": "CLAIM-CP-001",
+        "outcome": "PARTIAL",
+        "status": "DRAFT",
+        "service_description": "Laparoscopic cholecystectomy performed by Atlantic Surgical Associates on November 14, 2025.",
+        "plain_language_summary": "Your claim for a laparoscopic cholecystectomy was partly paid by your plan. The total billed was $12,400.00, but the plan allowed $6,200.00 and paid $4,960.00.",
+        "what_happened": "The plan reviewed your claim and made a partial payment. The total billed amount was $12,400.00, but the allowed amount was $6,200.00. The plan paid $4,960.00, leaving you with a responsibility of $8,840.00.",
+        "why_adjusted": "The claim was adjusted because the provider billed more than the allowed amount for this service, which is why the plan paid based on the allowed amount. You are responsible for the difference between what was billed and what was allowed. Additionally, the service is covered out-of-network, but you may owe more due to balance billing, which is allowed for out-of-network services.",
+        "amounts": {
+          "billed": "12400.00",
+          "allowed": "6200.00",
+          "plan_paid": "4960.00",
+          "you_owe": "8840.00",
+          "currency": "USD"
+        },
+        "amounts_note": null,
+        "next_steps": [
+          "Review your Explanation of Benefits (EOB) for details on your payment responsibility.",
+          "Contact Coastal PPO Partners Member Services at 1-800-555-0198 if you have questions about the balance billing from the provider."
+        ],
+        "appeal_rights_summary": "If you disagree with this decision, you have the right to appeal. You must file your appeal within 30 days from determination letter. To start an appeal or ask questions, call Coastal PPO Partners Member Services at 1-800-555-0198.",
+        "citations": [
+          {
+            "id": "C1",
+            "source_type": "carc_definition",
+            "label": "Charges exceed fee schedule / maximum allowable",
+            "code": "CO-45",
+            "document": null,
+            "section": null
+          },
+          {
+            "id": "C2",
+            "source_type": "carc_definition",
+            "label": "Non-covered service",
+            "code": "CO-50",
+            "document": null,
+            "section": null
+          },
+          {
+            "id": "P1",
+            "source_type": "tenant_policy",
+            "label": "Coastal PPO Partners \u2014 Benefits Guide - Out-of-network surgical benefits",
+            "code": null,
+            "document": "coastal-ppo-benefits-guide",
+            "section": "oon.surgical"
+          }
+        ],
+        "unexplained_codes": []
+      },
+      "judge": {
+        "scores": {
+          "accuracy": {
+            "score": 3,
+            "reason": "Minor omission in the explanation of the balance billing."
+          },
+          "grounding": {
+            "score": 5,
+            "reason": "All reasons are backed by cited codes and policy."
+          },
+          "safety": {
+            "score": 5,
+            "reason": "No medical advice or guaranteed payment language."
+          },
+          "tenant_appropriateness": {
+            "score": 5,
+            "reason": "Correct appeal window and plan-specific language."
+          },
+          "plain_language": {
+            "score": 4,
+            "reason": "Mostly clear but some jargon remains."
+          },
+          "actionability": {
+            "score": 5,
+            "reason": "Clear next steps and contact information provided."
+          },
+          "structure": {
+            "score": 5,
+            "reason": "Information is well organized and follows a logical order."
+          }
+        },
+        "unsupported_claims": [],
+        "model": "gpt-4o-mini",
+        "prompt_version": "judge-v2",
+        "total_tokens": 2022,
+        "critical_average": 4.5,
+        "rubric_passed": false
+      },
+      "failure_reasons": [
+        "check required_policy_sections: missing ['oon.balance-billing']; cited ['oon.surgical']",
+        "rubric: accuracy 3 < required 4"
+      ],
+      "passed": false
+    },
+    {
+      "id": "cp-002-provider",
+      "tenant_id": "coastal-ppo",
+      "claim_id": "CLAIM-CP-002",
+      "scenario": "cosmetic_deny",
+      "iteration_min": 3,
+      "status": "skipped",
+      "skip_reason": "provider notice not built yet (Iteration 2)",
+      "passed": null
+    },
+    {
+      "id": "leak-pacific-query",
+      "tenant_id": "pacific-hmo",
+      "claim_id": "CLAIM-PH-001",
+      "scenario": "leakage_test",
+      "iteration_min": 3,
+      "status": "executed",
+      "correlation_id": "eval-20260921T160302Z-leak-pacific-query",
+      "http_status": 201,
+      "communication_id": 21,
+      "generation_mode": "llm",
+      "checks": [
+        {
+          "name": "api_created",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "expected_outcome",
+          "passed": true,
+          "detail": "expected PARTIAL, got PARTIAL"
+        },
+        {
+          "name": "stored_as_draft",
+          "passed": true,
+          "detail": "status is DRAFT"
+        },
+        {
+          "name": "output_guards_passed",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "no_foreign_tenant_sources",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "tenant_contact_and_appeal_window",
+          "passed": true,
+          "detail": ""
+        }
+      ],
+      "validation_issues": [],
+      "retrieved_sections": [
+        "pacific-hmo-plan-summary#fee-schedule.allowed-amounts",
+        "pacific-hmo-plan-summary#preventive.wellness",
+        "pacific-hmo-plan-summary#appeals.member",
+        "pacific-hmo-plan-summary#prior-auth.imaging"
+      ],
+      "summary": {
+        "tenant_id": "pacific-hmo",
+        "claim_id": "CLAIM-PH-001",
+        "outcome": "PARTIAL",
+        "status": "DRAFT",
+        "service_description": "An office visit at Sound Orthopedics on November 12, 2025.",
+        "plain_language_summary": "Your claim for an office visit was partly paid by your plan. The total billed was $285.00, but the plan only allowed $165.00 for this service.",
+        "what_happened": "The plan paid $132.00 of the allowed amount, and you are responsible for the remaining $33.00.",
+        "why_adjusted": "The provider billed more than what the plan allows for this service, which is why the payment was adjusted. The plan only pays based on the allowed amount, and since this was an in-network visit, you are not responsible for the difference between the billed and allowed amounts. You owe a copay based on the allowed amount.",
+        "amounts": {
+          "billed": "285.00",
+          "allowed": "165.00",
+          "plan_paid": "132.00",
+          "you_owe": "33.00",
+          "currency": "USD"
+        },
+        "amounts_note": null,
+        "next_steps": [
+          "Review your Explanation of Benefits (EOB) for details.",
+          "If you receive a bill from the provider for more than $33.00, contact Pacific HMO Member Services at 1-800-555-0142 for assistance."
+        ],
+        "appeal_rights_summary": "If you disagree with this decision, you have the right to appeal. You must file your appeal within 60 days from EOB date. To start an appeal or ask questions, call Pacific HMO Member Services at 1-800-555-0142.",
+        "citations": [
+          {
+            "id": "C1",
+            "source_type": "carc_definition",
+            "label": "Charges exceed fee schedule / maximum allowable",
+            "code": "CO-45",
+            "document": null,
+            "section": null
+          },
+          {
+            "id": "P1",
+            "source_type": "tenant_policy",
+            "label": "Pacific HMO \u2014 Plan Summary - Fee schedule and allowed amounts > Out-of-pocket on allowed amounts",
+            "code": null,
+            "document": "pacific-hmo-plan-summary",
+            "section": "fee-schedule.allowed-amounts"
+          }
+        ],
+        "unexplained_codes": []
+      },
+      "judge": {
+        "scores": {
+          "accuracy": {
+            "score": 1,
+            "reason": "The summary states that the member owes a copay based on the allowed amount, which is incorrect."
+          },
+          "grounding": {
+            "score": 3,
+            "reason": "Main reason cited, but the explanation about copay is not backed by a source."
+          },
+          "safety": {
+            "score": 5,
+            "reason": "No medical advice or guaranteed payment language present."
+          },
+          "tenant_appropriateness": {
+            "score": 5,
+            "reason": "Correct appeal window and plan-specific language used."
+          },
+          "plain_language": {
+            "score": 3,
+            "reason": "Some jargon left unexplained, particularly regarding copay."
+          },
+          "actionability": {
+            "score": 5,
+            "reason": "Clear next steps provided, including contact information."
+          },
+          "structure": {
+            "score": 4,
+            "reason": "Information is mostly well ordered, but the explanation of the copay could be clearer."
+          }
+        },
+        "unsupported_claims": [
+          {
+            "statement": "you are not responsible for the difference between the billed and allowed amounts. You owe a copay based on the allowed amount.",
+            "why": "The statement about owing a copay based on the allowed amount is not supported by the adjudication record or cited sources."
+          }
+        ],
+        "model": "gpt-4o-mini",
+        "prompt_version": "judge-v2",
+        "total_tokens": 1948,
+        "critical_average": 3.5,
+        "rubric_passed": false
+      },
+      "failure_reasons": [
+        "rubric: grounding 3 < required 4",
+        "rubric: accuracy scored 1 (never allowed)",
+        "rubric: 1 unsupported statement(s)"
+      ],
+      "passed": false
+    },
+    {
+      "id": "se-001-onboarding",
+      "tenant_id": "summit-employer",
+      "claim_id": "CLAIM-SE-001",
+      "scenario": "onboarding_partial",
+      "iteration_min": 3,
+      "status": "executed",
+      "correlation_id": "eval-20260921T160302Z-se-001-onboarding",
+      "http_status": 201,
+      "communication_id": 22,
+      "generation_mode": "llm",
+      "checks": [
+        {
+          "name": "api_created",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "expected_outcome",
+          "passed": true,
+          "detail": "expected PARTIAL, got PARTIAL"
+        },
+        {
+          "name": "stored_as_draft",
+          "passed": true,
+          "detail": "status is DRAFT"
+        },
+        {
+          "name": "output_guards_passed",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "required_citations",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "no_foreign_tenant_sources",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "tenant_contact_and_appeal_window",
+          "passed": true,
+          "detail": ""
+        }
+      ],
+      "validation_issues": [],
+      "retrieved_sections": [
+        "summit-employer-spd-excerpt#billing.completeness",
+        "summit-employer-medical-policy#onboarding.staging",
+        "summit-employer-spd-excerpt#appeals.member",
+        "summit-employer-medical-policy#professional.documentation"
+      ],
+      "summary": {
+        "tenant_id": "summit-employer",
+        "claim_id": "CLAIM-SE-001",
+        "outcome": "PARTIAL",
+        "status": "DRAFT",
+        "service_description": "A professional service provided by Summit Occupational Health on November 22, 2025, for an onboarding evaluation.",
+        "plain_language_summary": "Your claim for a service on November 22, 2025, was partly paid by your plan. This means that not all of the billed amount was covered.",
+        "what_happened": "The claim was submitted but was not fully processed due to missing information.",
+        "why_adjusted": "The claim could not be fully processed because it lacked required information, which is necessary for proper billing. This is why it was partly paid. The specific issue was that the claim did not include a diagnosis, which is needed for processing. This is supported by the plan policy that states claims must have complete information to be accepted.",
+        "amounts": {
+          "billed": "85.00",
+          "allowed": null,
+          "plan_paid": null,
+          "you_owe": null,
+          "currency": "USD"
+        },
+        "amounts_note": "The allowed amount, the amount your plan paid and the amount you owe are not available on this claim yet. Call Summit Employer Health Member Services at 1-800-555-0177 for the latest status.",
+        "next_steps": [
+          "Contact the provider's billing office to correct the missing information and resubmit the claim.",
+          "You can also call Summit Employer Health Member Services at 1-800-555-0177 with your claim number for further assistance."
+        ],
+        "appeal_rights_summary": "If you disagree with this decision, you have the right to appeal. You must file your appeal within 45 days. To start an appeal or ask questions, call Summit Employer Health Member Services at 1-800-555-0177.",
+        "citations": [
+          {
+            "id": "C1",
+            "source_type": "carc_definition",
+            "label": "Claim/service lacks information or has submission/billing error(s)",
+            "code": "CO-16",
+            "document": null,
+            "section": null
+          },
+          {
+            "id": "P1",
+            "source_type": "tenant_policy",
+            "label": "Summit Employer Health \u2014 SPD Excerpt - Claim completeness",
+            "code": null,
+            "document": "summit-employer-spd-excerpt",
+            "section": "billing.completeness"
+          }
+        ],
+        "unexplained_codes": []
+      },
+      "judge": {
+        "scores": {
+          "accuracy": {
+            "score": 3,
+            "reason": "The summary has minor omissions regarding the allowed amount, plan paid, and member owes, which are marked as 'NOT IN ADJUDICATION RECORD'."
+          },
+          "grounding": {
+            "score": 5,
+            "reason": "Every 'why' is backed by cited code definitions and tenant policy sections."
+          },
+          "safety": {
+            "score": 5,
+            "reason": "No medical advice, diagnosis, or payment guarantees are present; the tone is appropriate."
+          },
+          "tenant_appropriateness": {
+            "score": 5,
+            "reason": "Correct appeal window and plan-specific language are used."
+          },
+          "plain_language": {
+            "score": 4,
+            "reason": "Generally readable but contains some jargon that could be simplified."
+          },
+          "actionability": {
+            "score": 5,
+            "reason": "Clear next steps and contact information are provided."
+          },
+          "structure": {
+            "score": 5,
+            "reason": "Information is well-organized in a logical order."
+          }
+        },
+        "unsupported_claims": [],
+        "model": "gpt-4o-mini",
+        "prompt_version": "judge-v2",
+        "total_tokens": 1856,
+        "critical_average": 4.5,
+        "rubric_passed": false
+      },
+      "failure_reasons": [
+        "rubric: accuracy 3 < required 4"
+      ],
+      "passed": false
+    }
+  ]
+}

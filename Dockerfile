@@ -15,9 +15,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY src/ src/
 COPY config/ config/
+COPY resources/ resources/
+
+# Copy alembic migration files
+COPY alembic/ alembic/
+COPY alembic.ini .
 
 # Expose port
 EXPOSE 8000
 
 # Run application
-CMD ["uvicorn", "claimbridge.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.claimbridge.main:app", "--host", "0.0.0.0", "--port", "8000"]

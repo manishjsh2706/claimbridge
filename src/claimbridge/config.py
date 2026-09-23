@@ -4,7 +4,7 @@ Loads settings from environment variables and .env files.
 """
 
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, List
 import os
 
 
@@ -49,14 +49,10 @@ class Settings(BaseSettings):
     
     # Multi-Tenant Settings
     TENANT_ISOLATION_ENABLED: bool = True
-    SUPPORTED_TENANTS: list = [
-        "pacific-hmo",
-        "coastal-ppo",
-        "summit-employer"
-    ]
+    SUPPORTED_TENANTS: List[str] = ["pacific-hmo", "coastal-ppo", "summit-employer"]
     
     # Security Settings
-    CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:8080"]
+    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8080"]
     JWT_SECRET: str = "your-secret-key-change-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = 24

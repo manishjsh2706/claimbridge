@@ -9,27 +9,12 @@ Proper multi-tenant isolation:
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from typing import Dict, List, Optional
+from typing import Optional, List
 import logging
 from datetime import datetime
 
 # Import LangGraph workflow
 from .langgraph.workflow import process_claim
-
-# RAG orchestrator lifecycle (Weaviate connection), owned by the nodes module
-from .langgraph.nodes import (
-    build_retrieval_query,
-    get_llm_client,
-    get_rag_orchestrator,
-    initialize_llm_client,
-    initialize_rag_orchestrator,
-    shutdown_llm_client,
-    shutdown_rag_orchestrator,
-)
-
-# Spec-aligned, tenant-scoped v1 API (Iteration 1+)
-from .api.v1 import router as v1_router
-from .db import dispose_engine, is_ready as database_is_ready
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -41,8 +26,6 @@ app = FastAPI(
     description="AI-powered claims processing system with multi-tenant isolation",
     version="1.0.0"
 )
-
-app.include_router(v1_router)
 
 
 # ==================== PYDANTIC MODELS ====================
@@ -80,34 +63,18 @@ class ClaimRequest(BaseModel):
 
 class ClaimResponse(BaseModel):
     """
-    Response model after processing a claim.
-
-    NOTE: FastAPI strips any field not declared here from the response. The
-    audit trail (node_execution_log) and the model's decision metadata were
-    being computed and then silently dropped because they were missing from
-    this model -- for a system whose value proposition is auditability, the
-    audit trail has to actually reach the caller.
+    Response model after processing a claim
     """
     company_id: str                # From header
     customer_id: str               # From header
     claim_id: str
-    final_status: str              # APPROVED, REJECTED, PENDING_REVIEW
-    generated_response: str        # AI assessment reasoning
-    confidence_score: float        # Blended: min(LLM self-report, retrieval ceiling)
+    final_status: str              # APPROVED, REJECTED, PENDING
+    generated_response: str        # AI assessment
+    confidence_score: float        # 0-1
     validation_errors: List[str]
     quality_issues: List[str]
     processing_log_id: Optional[int]
     timestamp: datetime
-
-    # --- LLM decision metadata (audit trail) ---
-    llm_decision: str = ""                      # APPROVE | DENY | MANUAL_REVIEW
-    llm_confidence: float = 0.0                 # The model's own self-report
-    cited_policies: List[str] = []              # Documents it relied on
-    policy_gap: bool = False                    # Policy did not cover the claim
-    llm_model: str = ""                         # Which model decided
-    llm_usage: Dict[str, int] = {}              # Token accounting
-    retrieved_document_count: int = 0           # How much grounding it had
-    node_execution_log: List[str] = []          # Per-node timeline
 
 
 class HealthCheckResponse(BaseModel):
@@ -115,12 +82,6 @@ class HealthCheckResponse(BaseModel):
     status: str
     timestamp: datetime
     version: str
-    vector_store: str          # "ready" | "unavailable" | "not_initialized"
-    llm: str                   # "ready" | "no_api_key" | "not_initialized"
-    llm_model: str             # Which model is configured
-    database: str              # "ready" | "unavailable"
-    circuit_breakers: dict = {}  # {"llm": {"state": "closed", ...}, "vector_store": {...}}
-    degraded: bool             # True when claims cannot be fully assessed
 
 
 # ==================== MIDDLEWARE & SECURITY ====================
@@ -197,54 +158,17 @@ def verify_customer_id(x_customer_id: Optional[str] = Header(None)) -> str:
 @app.get("/health", response_model=HealthCheckResponse, tags=["Health"])
 async def health_check():
     """
-    Health check endpoint.
-
-    INTERVIEW POINT: a health check that always returns 200 is worthless.
-    This one actually probes Weaviate. If the vector store is down, claims
-    still process but without policy grounding -- so we report `degraded: true`
-    rather than pretending to be healthy. A load balancer keeps sending traffic
-    (the service does still work), but monitoring can alert on the degradation.
+    Health check endpoint
 
     Returns:
-        Status of the API and its dependencies.
+        Status of the API and connected services
     """
-    orchestrator = get_rag_orchestrator()
-    if orchestrator is None:
-        vector_store = "not_initialized"
-    elif orchestrator.client.is_ready():
-        vector_store = "ready"
-    else:
-        vector_store = "unavailable"
-
-    llm_client = get_llm_client()
-    if llm_client is None:
-        llm_status, llm_model = "not_initialized", ""
-    elif llm_client.is_ready():
-        llm_status, llm_model = "ready", llm_client.model
-    else:
-        llm_status, llm_model = "no_api_key", llm_client.model
-
-    database = "ready" if database_is_ready() else "unavailable"
-
-    from src.claimbridge.resilience import breaker_states
-    breakers = breaker_states()
-    degraded = (vector_store != "ready" or llm_status != "ready" or database != "ready"
-                or any(b["state"] != "closed" for b in breakers.values()))
-    if degraded:
-        logger.warning(
-            f"Health check: degraded (vector_store={vector_store}, llm={llm_status}, database={database})"
-        )
+    logger.info("Health check requested")
 
     return {
-        "status": "degraded" if degraded else "healthy",
+        "status": "healthy",
         "timestamp": datetime.utcnow(),
-        "version": "1.0.0",
-        "vector_store": vector_store,
-        "llm": llm_status,
-        "llm_model": llm_model,
-        "database": database,
-        "circuit_breakers": breakers,
-        "degraded": degraded,
+        "version": "1.0.0"
     }
 
 
@@ -326,16 +250,7 @@ async def process_claim_endpoint(
             validation_errors=result["validation_errors"],
             quality_issues=result["quality_issues"],
             processing_log_id=result["processing_log_id"],
-            timestamp=datetime.utcnow(),
-            # Audit trail: what the model decided, what it cited, what it cost.
-            llm_decision=result.get("llm_decision", ""),
-            llm_confidence=result.get("llm_confidence", 0.0),
-            cited_policies=result.get("cited_policies", []),
-            policy_gap=result.get("policy_gap", False),
-            llm_model=result.get("llm_model", ""),
-            llm_usage=result.get("llm_usage", {}),
-            retrieved_document_count=result.get("retrieved_document_count", 0),
-            node_execution_log=result.get("node_execution_log", []),
+            timestamp=datetime.utcnow()
         )
 
     except Exception as e:
@@ -420,93 +335,6 @@ async def batch_process_claims(
     }
 
 
-# ==================== DEBUG / INSPECTION ====================
-
-@app.post("/claims/debug/retrieval", tags=["Debug"])
-async def debug_retrieval(
-    claim_request: ClaimRequest,
-    company_id: str = Depends(verify_company_id),
-    customer_id: str = Depends(verify_customer_id),
-):
-    """
-    Show exactly what retrieval does for a claim, without calling the LLM.
-
-    WHY THIS EXISTS: "the retrieval works" is not a claim you should have to
-    take on faith, and /claims/process deliberately does not return the
-    retrieved documents (it would bloat every response). Without visibility
-    here, a silent relevance regression -- the right document dropping out of
-    the top-K -- looks identical to a correct run from the outside.
-
-    Returns the query string that was embedded, every document that came back
-    with its similarity score, and the exact context string handed to the model.
-
-    IMPORTANT CAVEAT ON INTERPRETING THE SCORES:
-    If a collection holds no more documents than `limit`, the search returns all
-    of them regardless of relevance, and the ranking is untested. Check
-    `saturated` in the response -- when it is true for a collection, that
-    section proves isolation and plumbing, but says nothing about relevance
-    quality. Seed more documents than the limit to actually exercise ranking.
-
-    NOT FOR PRODUCTION: this exposes raw indexed content. Put it behind an
-    admin role or remove it before deploying.
-    """
-    orchestrator = get_rag_orchestrator()
-    if orchestrator is None:
-        raise HTTPException(
-            status_code=503,
-            detail="RAG orchestrator not initialized; cannot inspect retrieval",
-        )
-
-    # Build the query exactly the way the pipeline does, rather than
-    # reimplementing it here -- a debug view that drifts from the real code
-    # path is worse than no debug view.
-    query = build_retrieval_query({"normalized_claim": claim_request.dict()})
-
-    result = orchestrator.retrieve_claim_context(
-        claim_description=query,
-        company_id=company_id,
-        customer_id=customer_id,
-    )
-
-    documents = result.get("retrieved_documents", [])
-    metadata = result.get("metadata", {})
-
-    by_type = {}
-    for doc in documents:
-        by_type.setdefault(doc.get("document_type", "UNKNOWN"), []).append(
-            {
-                "title": doc.get("title", ""),
-                "score": round(doc.get("similarity_score", 0.0), 4),
-                "source": doc.get("source", ""),
-                "content_preview": (doc.get("content", "") or "")[:200],
-            }
-        )
-
-    # limit=5 per collection is the orchestrator default.
-    limit = 5
-    sections = {}
-    for label, docs in by_type.items():
-        sections[label] = {
-            "count": len(docs),
-            "saturated": len(docs) >= limit,
-            "documents": sorted(docs, key=lambda d: d["score"], reverse=True),
-        }
-
-    return {
-        "company_id": company_id,
-        "embedded_query": query,
-        "total_documents": len(documents),
-        "retrieval_succeeded": result.get("success", False),
-        "sections": sections,
-        "score_summary": {
-            "avg_policy_score": metadata.get("avg_policy_score"),
-            "avg_guideline_score": metadata.get("avg_guideline_score"),
-            "avg_history_score": metadata.get("avg_history_score"),
-        },
-        "context_sent_to_llm": result.get("retrieval_context", ""),
-    }
-
-
 # ==================== ERROR HANDLERS ====================
 
 @app.exception_handler(HTTPException)
@@ -533,45 +361,8 @@ async def general_exception_handler(request, exc):
 
 @app.on_event("startup")
 async def startup_event():
-    """
-    Initialize app on startup.
-
-    INTERVIEW POINT: resource initialization belongs here, not in the request path.
-    The Weaviate connection (TCP + gRPC channel) is built once and shared by every
-    request. Building it per-request would add ~50-200ms to every claim and churn
-    sockets until the pool is exhausted.
-
-    Note we do NOT re-raise if Weaviate is unreachable. A vector-store outage
-    should not stop the API from booting -- claims still validate and route to
-    human review, and /health reports `degraded` so monitoring can alert. Crashing
-    on startup would turn a partial outage into a total one.
-    """
+    """Initialize app on startup"""
     logger.info("ClaimBridge API starting up...")
-
-    try:
-        initialize_rag_orchestrator()
-        logger.info("RAG orchestrator ready (Weaviate connected)")
-    except Exception as e:
-        logger.error(
-            f"RAG orchestrator initialization FAILED: {e}. "
-            "API will start in DEGRADED mode -- claims will process without "
-            "policy grounding and route to manual review.",
-            exc_info=True,
-        )
-
-    # Initialized separately from the vector store so one failing dependency
-    # does not mask the other in the startup logs.
-    try:
-        client = initialize_llm_client()
-        logger.info(f"LLM client ready (model={client.model})")
-    except Exception as e:
-        logger.error(
-            f"LLM client initialization FAILED: {e}. "
-            "API will start in DEGRADED mode -- assessments will route to "
-            "manual review.",
-            exc_info=True,
-        )
-
     logger.info("LangGraph workflow loaded and ready")
     logger.info("Multi-tenant isolation enabled (Company + Customer)")
     logger.info("Trust boundary: Headers validate identity before body processing")
@@ -579,17 +370,8 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """
-    Cleanup on shutdown.
-
-    The Weaviate v4 client holds an open gRPC channel. Without closing it the
-    socket leaks on every reload, which you notice as 'too many open files'
-    after a few hours of development.
-    """
+    """Cleanup on shutdown"""
     logger.info("ClaimBridge API shutting down...")
-    shutdown_rag_orchestrator()
-    shutdown_llm_client()
-    dispose_engine()
 
 
 # ==================== ROOT ENDPOINT ====================
