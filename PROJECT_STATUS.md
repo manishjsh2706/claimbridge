@@ -305,8 +305,23 @@ crash no longer costs a second set of LLM calls.
 callables (generate, validate, template, escalation) and keeps every decision
 about claims, so the graph module imports nothing from the summary code and the
 provider notice can reuse it next. Checkpointing is in-memory by default;
-`CLAIMBRIDGE_CHECKPOINT_URL` switches it to Postgres -- **that path is written
-but not yet exercised**, so it does not count as verified.
+`CLAIMBRIDGE_CHECKPOINT_URL` switches it to Postgres.
+
+**Postgres checkpointing verified on the user's machine 2026-09-24** with
+`scripts/checkpoint_check.py`, across two separate processes rather than two
+calls in one (an in-memory checkpointer would pass a single-process test and
+prove nothing). Process 1 generated a draft and then died before validation;
+process 2, whose `generate` was rigged to raise if called at all, resumed the
+same thread, reported `next node: ('validate',)` -- exactly where it died --
+never called `generate`, and finished with the first process's draft and token
+count intact. The application default stays in-memory, so this is an opt-in
+path that is now exercised rather than merely written.
+
+LangGraph's four tables (`checkpoints`, `checkpoint_blobs`, `checkpoint_writes`,
+`checkpoint_migrations`) now exist in the `claimbridge` database, created by the
+library's own `setup()`. They are deliberately not in the Alembic history: they
+belong to LangGraph, and owning them here would mean hand-writing a migration
+for every upgrade of it.
 
 Checked before wiring it in: the six branches of the old loop (clean first
 attempt; guards fail then pass, with the issues fed back; guards fail twice ->

@@ -54,6 +54,12 @@ docker compose exec claimbridge python -m src.claimbridge.scripts.run_golden_eva
 
 # Unit tests (no LLM, no cost)
 docker compose exec claimbridge python -m pytest tests/unit -q
+
+# Checkpoint resume: process 1 dies after generating, process 2 resumes without
+# calling the model again. Two separate processes on purpose.
+$db = "postgresql://claimbridge:claimbridge_password@postgres:5432/claimbridge"
+docker compose exec -e CLAIMBRIDGE_CHECKPOINT_URL=$db claimbridge python -m src.claimbridge.scripts.checkpoint_check --phase crash
+docker compose exec -e CLAIMBRIDGE_CHECKPOINT_URL=$db claimbridge python -m src.claimbridge.scripts.checkpoint_check --phase resume
 ```
 
 The demo prints PASS/FAIL per step: PH-002 incomplete (NEED_INFO), PH-003 clean
