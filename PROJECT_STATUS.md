@@ -300,6 +300,33 @@ crash no longer costs a second set of LLM calls.
 
 ---
 
+**Built and verified on the user's machine 2026-09-24.**
+`summaries/graph.py` declares the machine; `summaries/member.py` hands it four
+callables (generate, validate, template, escalation) and keeps every decision
+about claims, so the graph module imports nothing from the summary code and the
+provider notice can reuse it next. Checkpointing is in-memory by default;
+`CLAIMBRIDGE_CHECKPOINT_URL` switches it to Postgres -- **that path is written
+but not yet exercised**, so it does not count as verified.
+
+Checked before wiring it in: the six branches of the old loop (clean first
+attempt; guards fail then pass, with the issues fed back; guards fail twice ->
+template; template itself fails a guard; LLM unreachable -> no retry, straight
+to template; emergency denial -> fixed messaging, model never called) all
+reproduce exactly, including the `LLM draft rejected: ...` prefixes and the
+`template-fallback (llm: ...)` model string. One bug caught that way:
+`PostgresSaver.from_conn_string` is a context manager and closes the connection
+on exit, so it cannot be returned as a long-lived saver -- replaced with an
+explicit connection pool.
+
+Then on the user's machine, after restarting the API: unit tests 41/41,
+`demo_iteration2` 11/11 with the member summary generated in `llm` mode (so the
+retry and fallback branches were not silently swallowing failures), golden eval
+10/11 = 91%. That is byte-identical to the run taken immediately before the
+graph existed -- same single failure (CP-001), same reason -- which is the
+evidence that the refactor changed no output.
+
+---
+
 ## Production roadmap (agreed 2026-09-22, built alongside the spec iterations)
 
 | When | Feature | Note |

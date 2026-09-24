@@ -108,6 +108,7 @@ Headers: `X-Api-Key` (required), `Idempotency-Key` (POST /claims), `X-Correlatio
 | `src/claimbridge/intake/` | Claim payload schema, completeness validation, idempotent submit |
 | `src/claimbridge/recommendation/` | Tenant rules (as data, with policy citations) + deterministic engine |
 | `src/claimbridge/summaries/` | Member summary (I1) and provider notice (I2): context, prompt, guards, fallback |
+| `src/claimbridge/summaries/graph.py` | The generate → guard → retry → fall back loop as a LangGraph, checkpointed so a dead run resumes instead of re-calling the model |
 | `src/claimbridge/review/` | Publication state machine (HITL) and the draft pipeline |
 | `src/claimbridge/auth.py` | API keys, roles, tenant scope |
 | `src/claimbridge/resilience.py` | Circuit breakers for the LLM and Weaviate |

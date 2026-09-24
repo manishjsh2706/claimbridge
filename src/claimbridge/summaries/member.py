@@ -47,6 +47,7 @@ from src.claimbridge.llm import LLMUnavailable
 from src.claimbridge.models import Adjudication, AuditEvent, Claim, Communication, Tenant
 
 from . import guards
+from .graph import build_draft_graph, checkpointer_from_env, run_draft
 from .schemas import Amounts, Citation, CodeExplanation, MemberSummary, ValidationReport
 
 logger = logging.getLogger(__name__)
@@ -541,55 +542,40 @@ def generate_member_summary(
     tenant, claim, adjudication = load_claim_context(session, tenant_id, claim_id)
     ctx = assemble_context(tenant, claim, adjudication, codes, policy_search)
 
-    report = ValidationReport(passed=False)
-    model_name: Optional[str] = None
-    usage_total = 0
-    data: Optional[Dict[str, Any]] = None
+    # The generate -> guard -> retry -> fall back loop is a state machine, so it
+    # is declared as one (summaries/graph.py) rather than written as control
+    # flow. Same branches, same order, same outputs as the loop it replaces --
+    # what it adds is that every step is checkpointed, so a run that dies after
+    # a successful generate resumes at the node it died on instead of paying
+    # for the model again. This module still owns every decision: the graph is
+    # handed the four callables below and knows nothing about claims.
+    state = run_draft(
+        build_draft_graph(
+            generate=lambda feedback: llm.complete_json(*build_prompts(ctx, codes, feedback)),
+            validate=lambda draft, require_policy_citation: validate_draft(
+                ctx, draft, require_policy_citation),
+            template=lambda: template_summary(ctx),
+            escalation=lambda: fixed_escalation_summary(ctx),
+            escalation_reason="Emergency-related denial: fixed messaging, human review required",
+            needs_escalation=lambda: ctx.is_emergency and adjudication.outcome == "DENY",
+            unavailable_exc=LLMUnavailable,
+            max_attempts=MAX_ATTEMPTS,
+            checkpointer=checkpointer_from_env(),
+        ),
+        correlation_id, "member",
+    )
 
-    if ctx.is_emergency and adjudication.outcome == "DENY":
-        data = fixed_escalation_summary(ctx)
-        report.generation_mode = "fixed_escalation"
-        report.escalation_reason = "Emergency-related denial: fixed messaging, human review required"
-        report.needs_human_review = True
-        report.passed = True
-    else:
-        feedback: Optional[List[str]] = None
-        for attempt in range(1, MAX_ATTEMPTS + 1):
-            report.attempts = attempt
-            system, user = build_prompts(ctx, codes, feedback)
-            try:
-                result = llm.complete_json(system, user)
-            except LLMUnavailable as e:
-                logger.error(f"[SUMMARY] LLM unavailable: {e}")
-                report.issues.append(f"LLM unavailable: {e}")
-                data = None
-                break
-            model_name = result["model"]
-            usage_total += result["usage"].get("total_tokens", 0)
-            candidate = result["data"]
-            issues = validate_draft(ctx, candidate)
-            data = candidate
-            if not issues:
-                report.passed = True
-                report.issues = []
-                break
-            report.issues = issues
-            feedback = issues
-            logger.warning(f"[SUMMARY] attempt {attempt} rejected: {issues}")
-
-        if data is None or not report.passed:
-            # Model unreachable, or it failed the guards on every attempt. Store
-            # the model-free template instead, so a stored draft NEVER contains
-            # text that failed a guard (a wrong amount, an invented citation).
-            # The rejected attempts stay on record in report.issues.
-            llm_issues = list(report.issues)
-            data = template_summary(ctx)
-            report.generation_mode = "template_fallback"
-            report.needs_human_review = True
-            template_issues = validate_draft(ctx, data, require_policy_citation=False)
-            report.passed = not template_issues
-            report.issues = [f"LLM draft rejected: {i}" for i in llm_issues] + template_issues
-            model_name = f"template-fallback (llm: {model_name})" if model_name else "template-fallback"
+    data: Optional[Dict[str, Any]] = state["data"]
+    model_name: Optional[str] = state["model"]
+    usage_total = state["usage_total"]
+    report = ValidationReport(
+        passed=state["passed"],
+        issues=list(state["issues"]),
+        attempts=state["attempts"],
+        needs_human_review=state["needs_human_review"],
+        generation_mode=state["generation_mode"],
+        escalation_reason=state["escalation_reason"],
+    )
 
     if ctx.unknown_codes:
         report.needs_human_review = True
