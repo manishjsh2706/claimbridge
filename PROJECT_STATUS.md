@@ -323,6 +323,25 @@ library's own `setup()`. They are deliberately not in the Alembic history: they
 belong to LangGraph, and owning them here would mean hand-writing a migration
 for every upgrade of it.
 
+**The provider notice moved onto the same graph, 2026-09-24.** It had been
+carrying a second `for attempt` loop of its own -- the duplication the graph
+existed to remove. Both audiences now share one declaration and differ only in
+the callables they pass: prompts, guards, template. Its inline fallback draft
+became `provider.template_draft(ctx)`.
+
+One difference is now explicit rather than accidental: `validate_template`. The
+member summary re-runs the guards over its template; the provider notice never
+has. That was preserved, not "fixed", because aligning them changes behaviour
+and deserves its own commit and its own eval run. **Worth doing** -- there is no
+good reason the two audiences differ here -- but not smuggled in with a
+refactor whose whole claim is that it changes nothing.
+
+Verified on the user's machine: unit tests 48/48, `demo_iteration2` 11/11,
+golden eval **11/11 = 100%**, with all three provider cases (`ph-004-provider`,
+`ph-rx-001-provider`, `cp-002-provider`) generated through the shared graph.
+CP-001 passed in this run, which is further evidence it is intermittent rather
+than broken.
+
 Checked before wiring it in: the six branches of the old loop (clean first
 attempt; guards fail then pass, with the issues fed back; guards fail twice ->
 template; template itself fails a guard; LLM unreachable -> no retry, straight

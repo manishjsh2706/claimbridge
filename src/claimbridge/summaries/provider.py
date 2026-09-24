@@ -40,6 +40,7 @@ from .member import (
     MAX_ATTEMPTS, ClaimNotFound, PolicySearch, SummaryContext, TenantNotFound, TenantNotServing,
     assemble_context, load_claim_context, ClaimNotAdjudicated,
 )
+from .graph import build_draft_graph, checkpointer_from_env, run_draft
 from .schemas import (
     Amounts, BillingCodesReference, Citation, ClaimIdentifiers, CodesOnClaim, ProviderNotice, ValidationReport,
 )
@@ -194,6 +195,23 @@ Respond with ONE JSON object:
     return system, user
 
 
+def template_draft(ctx: SummaryContext) -> Dict[str, Any]:
+    """
+    The model-free notice: everything here comes from the adjudication and the
+    code reference, so it is always true, and duller than the model's version.
+    Used when the model is unreachable or its output failed the guards twice.
+    """
+    codes_on_claim = ctx.adjudication.carc_codes + ctx.adjudication.rarc_codes
+    return {
+        "technical_summary": (f"Claim {ctx.claim.claim_id} adjudicated as {ctx.adjudication.outcome} "
+                              f"with codes {', '.join(codes_on_claim) or 'none'}."),
+        "correction_actions": template_actions(ctx),
+        "resubmission_instructions": "Resubmit a corrected claim, or file a provider appeal, as "
+                                     "described in the cited plan policy.",
+        "why_citation_ids": sorted(ctx.sources),
+    }
+
+
 def validate_draft(ctx: SummaryContext, data: Dict[str, Any]) -> List[str]:
     issues = []
     if not isinstance(data.get("technical_summary"), str) or len(data["technical_summary"].strip()) < 10:
@@ -251,35 +269,33 @@ def generate_provider_notice(session: Session, tenant_id: str, claim_id: str, *,
         tenant, claim, adjudication = load_claim_context(session, tenant_id, claim_id)   # 404 / 409 rules
         ctx = assemble_context(tenant, claim, adjudication, codes, policy_search)
         retrieved = [f"{h['doc_key']}#{h['section_path']}" for h in ctx.policy_hits]
-        data, feedback = None, None
-        report = ValidationReport(passed=False)
-        for attempt in range(1, MAX_ATTEMPTS + 1):
-            report.attempts = attempt
-            system, user = build_prompts(ctx, codes, rec_rationale, feedback)
-            try:
-                result = llm.complete_json(system, user)
-            except LLMUnavailable as e:
-                report.issues.append(f"LLM unavailable: {e}")
-                break
-            model_name = result["model"]
-            usage_total += result["usage"].get("total_tokens", 0)
-            issues = validate_draft(ctx, result["data"])
-            if not issues:
-                data, report.passed, report.issues = result["data"], True, []
-                break
-            report.issues, feedback = issues, issues
-        if data is None:
-            report.generation_mode = "template_fallback"
-            report.needs_human_review = True
-            report.issues = [f"LLM draft rejected: {i}" for i in report.issues]
-            model_name = f"template-fallback (llm: {model_name})" if model_name else "template-fallback"
-            report.passed = True
-            summary = (f"Claim {claim.claim_id} adjudicated as {adjudication.outcome} with codes "
-                       f"{', '.join(adjudication.carc_codes + adjudication.rarc_codes) or 'none'}.")
-            data = {"technical_summary": summary, "correction_actions": template_actions(ctx),
-                    "resubmission_instructions": "Resubmit a corrected claim, or file a provider appeal, as "
-                                                 "described in the cited plan policy.",
-                    "why_citation_ids": sorted(ctx.sources)}
+        # Same generation state machine as the member summary (summaries/graph.py).
+        # It was duplicated here as a second `for attempt` loop; now both audiences
+        # share one declaration and differ only in the callables they hand it.
+        state = run_draft(
+            build_draft_graph(
+                generate=lambda feedback: llm.complete_json(
+                    *build_prompts(ctx, codes, rec_rationale, feedback)),
+                validate=lambda draft, require_policy_citation: validate_draft(ctx, draft),
+                template=lambda: template_draft(ctx),
+                # The provider template has never been re-validated; see graph.py.
+                validate_template=False,
+                unavailable_exc=LLMUnavailable,
+                max_attempts=MAX_ATTEMPTS,
+                checkpointer=checkpointer_from_env(),
+            ),
+            correlation_id, "provider",
+        )
+        data = state["data"]
+        model_name = state["model"]
+        usage_total = state["usage_total"]
+        report = ValidationReport(
+            passed=state["passed"],
+            issues=list(state["issues"]),
+            attempts=state["attempts"],
+            needs_human_review=state["needs_human_review"],
+            generation_mode=state["generation_mode"],
+        )
         cited = [str(x) for x in data.get("why_citation_ids") or [] if str(x) in ctx.sources]
         cited = sorted(ctx.required_ids) + [c for c in cited if c not in ctx.required_ids]
         policy = [ctx.sources[c] for c in dict.fromkeys(cited) if ctx.sources[c].source_type == "tenant_policy"]

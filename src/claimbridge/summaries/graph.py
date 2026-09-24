@@ -98,6 +98,7 @@ def build_draft_graph(
     escalation: Optional[Callable[[], Dict[str, Any]]] = None,
     escalation_reason: Optional[str] = None,
     needs_escalation: Callable[[], bool] = lambda: False,
+    validate_template: bool = True,
     unavailable_exc: type = Exception,
     max_attempts: int = MAX_ATTEMPTS,
     checkpointer: Any = None,
@@ -115,6 +116,12 @@ def build_draft_graph(
     template()          -> a model-free draft built from the database alone
     escalation()        -> the fixed-messaging draft, when needs_escalation()
     unavailable_exc     -> the exception class meaning "model unreachable"
+    validate_template   -> run the guards over the template too. The member
+                           summary does (belt and braces on a draft a human
+                           will send); the provider notice does not, because it
+                           never has. Made explicit rather than quietly
+                           changed: aligning the two is a behaviour change and
+                           belongs in its own commit, with the eval re-run.
     """
 
     def node_escalate(state: DraftState) -> DraftState:
@@ -163,7 +170,7 @@ def build_draft_graph(
         # The rejections stay on the record, prefixed, for the reviewer.
         llm_issues = list(state.get("issues", []))
         data = template()
-        template_issues = validate(data, False)
+        template_issues = validate(data, False) if validate_template else []
         model = state.get("model")
         return {
             "data": data,
