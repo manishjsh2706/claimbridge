@@ -187,9 +187,21 @@ raised to 45 s because hybrid search embeds the query through OpenAI first.
 3. **CLAIM-CP-001 fixture is inconsistent — ask the mentor.** $4,960 plan paid
    is 80% of the $6,200 allowed, but the policy says OON pays 60%; $8,840 member
    share does not equal billed minus paid ($7,440); the CO-50 line says "verify
-   in scenario". The summary is now correct, but it cites `oon.surgical` while
-   the golden case requires `oon.balance-billing` (both sections describe
-   balance billing). Not forced to pass.
+   in scenario". The summary is now correct, but it sometimes cites
+   `oon.surgical` while the golden case requires `oon.balance-billing` (both
+   sections describe balance billing). Not forced to pass.
+
+   **This case is intermittent, confirmed 2026-09-24.** In one full run it
+   failed on `required_policy_sections` (cited `oon.surgical`, missing
+   `oon.balance-billing`) while the judge still scored the content 5.0; re-run
+   on its own immediately afterwards, it passed. So the suite is 10/11 or 11/11
+   depending on the run, and a single red CP-001 is not by itself evidence of a
+   regression -- re-run that one case before believing it. Cause is retrieval
+   ranking: which of the two balance-billing sections hybrid search surfaces
+   first varies, and the model cites what it is given. Fix later, either by
+   accepting either section in the check or by raising the retrieval limit for
+   this query. Until then the eval is not deterministic, which is worth stating
+   plainly rather than quietly re-running until it is green.
 4. Weaviate deprecation warnings (`vectorizer_config`); `@app.on_event` is
    deprecated in favour of lifespan handlers.
 
@@ -246,6 +258,47 @@ What the eval found and what fixed it — keep these, each came from a real fail
 Lesson: exact rules belong in code guards; the judge catches what code cannot,
 but it also misses things (it scored the inverted CO-50 at 5/5), so it grades —
 it never replaces a guard.
+
+## LangGraph upgrade (2026-09-24)
+
+The stack the owner set for this project is Python, LangChain/LangGraph, RAG,
+VectorDB and MCP. An audit against the code found two gaps: LangGraph existed
+only on the legacy `/claims/process` path, not in the `/v1` spine, and MCP was
+an empty `__init__.py`. LangChain was imported nowhere at all.
+
+`langchain==0.1.1` turned out to be the thing blocking a current LangGraph: it
+requires `langchain-core<0.2`, which silently caps `langgraph` at 0.0.24 with no
+resolver error. Removing the two unused langchain pins freed the upgrade.
+
+| Package | Before | After |
+|---------|--------|-------|
+| langgraph | 0.0.15 | 1.2.12 |
+| langgraph-checkpoint-postgres | -- | 3.1.2 (brings psycopg 3, alongside psycopg2) |
+| langchain, langchain-openai | 0.1.1 / 0.0.6 | removed (unused) |
+| langchain-core | 0.1.23 | 1.6.4, transitively via langgraph only |
+
+Everything else (fastapi 0.104.1, pydantic 2.13.5, weaviate-client 4.23.1,
+sqlalchemy 2.0.23) resolved unchanged.
+
+**Verified on the user's machine 2026-09-24, after rebuilding the image and
+before any graph code was written:** unit tests 41/41, `demo_iteration2` 11/11,
+golden eval 10/11 = 91% (gate 85%) with the known-flaky CP-001 as the single
+failure, which passed on an immediate re-run. The legacy graph's API
+(`set_entry_point` / `set_finish_point`) still works on 1.2.12, checked in a
+sandbox, so the old path is not broken by the upgrade.
+
+**Why the graph goes on the generation loop, not on `review/pipeline.py`:**
+the pipeline is a 99-line function with two branches -- wrapping it in a graph
+would be indirection with no gain. The real state machine is inside
+`summaries/member.py`: retrieve context, generate, run guards, retry with
+feedback on failure, fall back to a template when the retry also fails or the
+breaker is open, then persist. That is a genuine cycle with conditional edges.
+A sandbox shape-test of exactly that graph on langgraph 1.2.12 confirmed the
+retry path, the breaker path, and -- the point of the exercise -- that a run
+killed at `persist` resumes without re-running `retrieve` or `generate`, so a
+crash no longer costs a second set of LLM calls.
+
+---
 
 ## Production roadmap (agreed 2026-09-22, built alongside the spec iterations)
 

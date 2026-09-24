@@ -4,14 +4,18 @@ uvicorn==0.24.0
 pydantic>=2.12.0
 pydantic-settings>=2.1.0
 
-# LangChain & LLM Orchestration
-langchain==0.1.1
-langchain-openai==0.0.6
-langgraph==0.0.15
-# Called directly for claim assessment rather than through LangChain: LangGraph
-# already provides orchestration, and langchain-openai 0.0.6 is from early 2024.
-# Already present transitively via langchain-openai; declared explicitly here
-# because the code imports it directly.
+# Orchestration
+# langchain and langchain-openai were declared here but imported nowhere. They
+# were also the reason LangGraph could not move: langchain 0.1.1 requires
+# langchain-core<0.2, which silently caps langgraph at 0.0.24 with no error.
+# Removed, so the generation workflow can use a current LangGraph.
+langgraph>=1.2,<2
+# Checkpointer: a run that dies after the member summary resumes at the node it
+# died on instead of re-generating (and re-paying for) what already succeeded.
+# Brings psycopg 3, which coexists with the psycopg2 the app itself uses.
+langgraph-checkpoint-postgres>=3.1
+# Called directly rather than through a framework wrapper: the LLM writes wording
+# only, and the calls are few and explicit.
 openai>=1.6.1,<2
 
 # Vector Databases

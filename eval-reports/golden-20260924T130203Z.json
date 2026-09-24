@@ -1,0 +1,196 @@
+{
+  "run_id": "20260924T130203Z",
+  "base_url": "http://localhost:8000",
+  "iteration": 3,
+  "judge": {
+    "model": "gpt-4o",
+    "prompt_version": "judge-v5"
+  },
+  "gate": {
+    "threshold": 0.85,
+    "pass_rate": 1.0,
+    "passed": true,
+    "note": ""
+  },
+  "counts": {
+    "total": 1,
+    "executed": 1,
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0
+  },
+  "cases": [
+    {
+      "id": "cp-001-member",
+      "tenant_id": "coastal-ppo",
+      "claim_id": "CLAIM-CP-001",
+      "audience": "member",
+      "scenario": "oon_partial",
+      "iteration_min": 3,
+      "status": "executed",
+      "correlation_id": "eval-20260924T130203Z-cp-001-member",
+      "http_status": 201,
+      "communication_id": 10156,
+      "generation_mode": "llm",
+      "checks": [
+        {
+          "name": "api_created",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "expected_outcome",
+          "passed": true,
+          "detail": "expected PARTIAL, got PARTIAL"
+        },
+        {
+          "name": "not_published_without_review",
+          "passed": true,
+          "detail": "status is DRAFT"
+        },
+        {
+          "name": "output_guards_passed",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "required_citations",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "required_policy_sections",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "no_foreign_tenant_sources",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "tenant_contact_and_appeal_window",
+          "passed": true,
+          "detail": ""
+        }
+      ],
+      "validation_issues": [],
+      "retrieved_sections": [
+        "coastal-ppo-benefits-guide#oon.surgical",
+        "coastal-ppo-oon-policy#surgical.cholecystectomy",
+        "coastal-ppo-oon-policy#oon.balance-billing",
+        "coastal-ppo-oon-policy#billing.resubmission"
+      ],
+      "summary": {
+        "tenant_id": "coastal-ppo",
+        "claim_id": "CLAIM-CP-001",
+        "outcome": "PARTIAL",
+        "status": "DRAFT",
+        "service_description": "Laparoscopic cholecystectomy performed by Atlantic Surgical Associates on November 14, 2025.",
+        "plain_language_summary": "Your claim for a laparoscopic cholecystectomy was partly paid by your plan. The total billed was $12,400.00, but the plan only allowed $6,200.00, resulting in a payment of $4,960.00.",
+        "what_happened": "The plan reviewed your claim and paid a portion based on the allowed amount for out-of-network services.",
+        "why_adjusted": "The provider billed more than what the plan allows for this service, which is why the payment was reduced. You are responsible for the remaining balance, which includes the difference between what was billed and what was allowed. Since the provider is out-of-network, they may bill you for the remaining amount.",
+        "amounts": {
+          "billed": "12400.00",
+          "allowed": "6200.00",
+          "plan_paid": "4960.00",
+          "you_owe": "8840.00",
+          "currency": "USD"
+        },
+        "amounts_note": null,
+        "next_steps": [
+          "Review your Explanation of Benefits (EOB) for details on your payment and what you owe.",
+          "Contact Coastal PPO Partners Member Services at 1-800-555-0198 if you have questions about the claim or the amount you owe."
+        ],
+        "appeal_rights_summary": "If you disagree with this decision, you have the right to appeal. You must file your appeal within 30 days from determination letter. To start an appeal or ask questions, call Coastal PPO Partners Member Services at 1-800-555-0198.",
+        "citations": [
+          {
+            "id": "C1",
+            "source_type": "carc_definition",
+            "label": "Charges exceed fee schedule / maximum allowable",
+            "code": "CO-45",
+            "document": null,
+            "section": null
+          },
+          {
+            "id": "C2",
+            "source_type": "carc_definition",
+            "label": "Non-covered service",
+            "code": "CO-50",
+            "document": null,
+            "section": null
+          },
+          {
+            "id": "P1",
+            "source_type": "tenant_policy",
+            "label": "Coastal PPO Partners \u2014 Benefits Guide - Out-of-network surgical benefits",
+            "code": null,
+            "document": "coastal-ppo-benefits-guide",
+            "section": "oon.surgical"
+          },
+          {
+            "id": "P3",
+            "source_type": "tenant_policy",
+            "label": "Coastal PPO \u2014 Out-of-Network Policy - Balance billing",
+            "code": null,
+            "document": "coastal-ppo-oon-policy",
+            "section": "oon.balance-billing"
+          }
+        ],
+        "unexplained_codes": [],
+        "code_explanations": [
+          {
+            "code": "CO-45",
+            "plain_name": "Charge reduced to allowed amount",
+            "meaning": "The provider billed above the plan\u2019s allowed amount for this service"
+          },
+          {
+            "code": "CO-50",
+            "plain_name": "Service not covered by your plan",
+            "meaning": "The service is excluded under plan benefits or not a covered benefit category"
+          }
+        ]
+      },
+      "judge": {
+        "scores": {
+          "accuracy": {
+            "score": 5,
+            "reason": "All amounts and outcomes match the facts."
+          },
+          "grounding": {
+            "score": 5,
+            "reason": "All reasons for adjustments are backed by cited sources."
+          },
+          "safety": {
+            "score": 5,
+            "reason": "No medical advice or payment guarantees; appropriate tone."
+          },
+          "tenant_appropriateness": {
+            "score": 5,
+            "reason": "Correct appeal window and contact information for the plan."
+          },
+          "plain_language": {
+            "score": 5,
+            "reason": "Readable at an appropriate level with all codes explained."
+          },
+          "actionability": {
+            "score": 5,
+            "reason": "Clear next steps and contact information provided."
+          },
+          "structure": {
+            "score": 5,
+            "reason": "Information is well-organized and follows a logical structure."
+          }
+        },
+        "unsupported_claims": [],
+        "model": "gpt-4o",
+        "prompt_version": "judge-v5",
+        "total_tokens": 2454,
+        "critical_average": 5.0,
+        "rubric_passed": true
+      },
+      "failure_reasons": [],
+      "passed": true
+    }
+  ]
+}
