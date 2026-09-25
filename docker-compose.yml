@@ -66,7 +66,6 @@ services:
         condition: service_healthy
     volumes:
       - ./src:/app/src
-      - ./config:/app/config
       # Provided spec resources (tenant policies, CARC/RARC reference, golden
       # evals). Read-only: the app ingests and reads them, never modifies them.
       - ./resources:/app/resources:ro

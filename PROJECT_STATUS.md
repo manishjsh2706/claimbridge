@@ -361,6 +361,32 @@ evidence that the refactor changed no output.
 
 ---
 
+## CI caught its first real bug (2026-09-25)
+
+The first push to GitHub went green on `lint` and `unit` and red on
+`docker-build`:
+
+    failed to compute cache key: "/config": not found
+
+`config/` is an empty directory left over from the project skeleton. Git cannot
+track an empty directory, so it does not exist in a fresh clone, and
+`COPY config/ config/` in the Dockerfile fails on a runner. It never failed
+locally because the directory is sitting on the developer's disk.
+
+Nothing reads it -- there is not one reference to `config/` anywhere in the
+Python; the real settings live in `src/claimbridge/config.py`. So the fix was to
+drop the `COPY` and the matching `./config:/app/config` mount from
+`docker-compose.yml`, not to add a `.gitkeep` to a folder no code wants.
+
+Checked at the same time that every other Dockerfile `COPY` source really is in
+git (`requirements.txt`, `src/`, `resources/`, `alembic/`, `alembic.ini` -- all
+tracked), so this class of failure is now ruled out rather than fixed once.
+
+Worth recording because it is the argument for CI in one page: the image built
+on the developer's machine for weeks and could not have built anywhere else.
+
+---
+
 ## Production roadmap (agreed 2026-09-22, built alongside the spec iterations)
 
 | When | Feature | Note |
