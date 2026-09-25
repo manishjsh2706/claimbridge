@@ -12,6 +12,8 @@ Versioned, tenant-scoped API - ClaimBridge
     GET  /v1/tenants/{tenant_id}/review-queue                            (Iteration 2)
     GET  /v1/tenants/{tenant_id}/communications/{id}                     (Iteration 2)
     POST /v1/tenants/{tenant_id}/communications/{id}/approve|publish|reject  (Iteration 2)
+    GET  /v1/tenants/{tenant_id}/policy-search?q=                        (Iteration 3+, MCP)
+    GET  /v1/tenants/{tenant_id}/codes?code=                             (Iteration 3+, MCP)
 
 WHY THE TENANT IS IN THE PATH
 The spec asks for "tenant-scoped routes" and "every API request resolves
@@ -463,3 +465,136 @@ def reject_communication(communication_id: int, tenant_id: str = Depends(tenant_
                          ctx: RequestContext = Depends(authorize("review:act")),
                          body: ReviewNote = Body(default=ReviewNote())):
     return _review_action(tenant_id, communication_id, "DRAFT", ctx, body.note)
+
+
+# ---------------------------------------------------------------------------
+# Read-only reference endpoints (Iteration 3+)
+#
+# These two existed only as internal calls: the summary code searched policy
+# and resolved codes on its way to writing a draft. They are exposed here
+# because the MCP server (src/claimbridge/mcp/) is an ordinary API client, not
+# a privileged insider -- it holds an API key and can reach exactly what that
+# key's role and tenant allow, through this router, with the same audit trail.
+#
+# Giving the MCP server a database session instead would have meant
+# re-implementing tenant scoping, permission checks and auditing inside the
+# tool code, where they could drift from the rules enforced here. One
+# implementation, one place to get it right.
+# ---------------------------------------------------------------------------
+
+class PolicySection(BaseModel):
+    doc_key: str
+    document_title: str
+    section_path: str
+    section_title: str
+    content: str
+    effective_date: Optional[str] = None
+    corpus_version: Optional[str] = None
+    score: float
+
+
+class PolicySearchOut(BaseModel):
+    tenant_id: str
+    query: str
+    sections: List[PolicySection]
+    degraded: bool = False
+    note: Optional[str] = None
+
+
+class CodeOut(BaseModel):
+    code: str
+    kind: str
+    title: str
+    member_friendly_name: str
+    fields: Dict[str, str]
+
+
+class CodeLookupOut(BaseModel):
+    known: List[CodeOut]
+    unknown: List[str]
+
+
+@router.get("/tenants/{tenant_id}/policy-search", response_model=PolicySearchOut,
+            summary="Hybrid search over THIS tenant's policy sections")
+def policy_search_endpoint(
+    q: str = Query(..., min_length=3, max_length=500, description="What to look for"),
+    limit: int = Query(4, ge=1, le=10),
+    tenant_id: str = Depends(tenant_path),
+    ctx: RequestContext = Depends(authorize("claims:read")),
+):
+    """
+    The tenant comes from the path and is applied as a filter INSIDE the
+    Weaviate query, so another tenant's sections are never candidates for
+    ranking -- the same pre-filtering the summary pipeline uses, not a
+    retrieve-then-discard pass that would still leak through scores.
+
+    A vector store outage degrades rather than fails: an empty result with
+    `degraded: true`, so a caller can tell "no relevant policy" apart from
+    "the search did not run".
+    """
+    _, policy_search = _dependencies()
+    if policy_search is None:
+        return PolicySearchOut(tenant_id=tenant_id, query=q, sections=[], degraded=True,
+                               note="policy search is unavailable; this is not an empty result")
+    try:
+        hits = policy_search(q, tenant_id, limit=limit)
+    except Exception as e:
+        logger.error(f"[V1] policy search failed for {tenant_id}: {e}")
+        return PolicySearchOut(tenant_id=tenant_id, query=q, sections=[], degraded=True,
+                               note=f"policy search failed: {type(e).__name__}")
+
+    # Defence in depth: the filter above already scopes this, but a hit that
+    # somehow carries another tenant's id is dropped and shouted about rather
+    # than returned.
+    clean = []
+    for h in hits:
+        if h.get("tenant_id") != tenant_id:
+            logger.error(f"[V1] dropped a {h.get('tenant_id')!r} section from a {tenant_id!r} search")
+            continue
+        clean.append(PolicySection(
+            doc_key=h.get("doc_key", ""), document_title=h.get("document_title", ""),
+            section_path=h.get("section_path", ""), section_title=h.get("section_title", ""),
+            content=h.get("content", ""), effective_date=h.get("effective_date") or None,
+            corpus_version=h.get("corpus_version") or None, score=h.get("similarity_score", 0.0),
+        ))
+
+    try:
+        with session_scope() as s:
+            s.add(AuditEvent(
+                tenant_id=tenant_id, claim_id=None, action="POLICY_SEARCHED",
+                actor=ctx.actor, correlation_id=ctx.correlation_id,
+                details={"query": q, "limit": limit,
+                         "sections": [f"{c.doc_key}#{c.section_path}" for c in clean]},
+            ))
+    except Exception as e:      # auditing must never mask the answer
+        logger.error(f"[AUDIT] failed to record POLICY_SEARCHED: {e}")
+
+    return PolicySearchOut(tenant_id=tenant_id, query=q, sections=clean)
+
+
+@router.get("/tenants/{tenant_id}/codes", response_model=CodeLookupOut,
+            summary="Exact CARC/RARC definitions from the approved reference")
+def code_lookup_endpoint(
+    code: List[str] = Query(..., min_length=1, description="Repeatable: ?code=CO-197&code=CO-45"),
+    tenant_id: str = Depends(tenant_path),
+    ctx: RequestContext = Depends(authorize("claims:read")),
+):
+    """
+    Exact lookup, never a model. A code the reference does not define comes
+    back under `unknown` rather than being guessed at -- the same rule the
+    member summary follows, where an unexplained code routes the draft to a
+    human instead of inventing a meaning.
+
+    Not audited: the CARC/RARC reference is shared, published data, identical
+    for every tenant. Auditing lookups of it would bury the events that matter
+    (who read whose claim) under noise.
+    """
+    if len(code) > 25:
+        raise HTTPException(status_code=422, detail="at most 25 codes per lookup")
+    resolved = get_code_reference().resolve(code)
+    return CodeLookupOut(
+        known=[CodeOut(code=d.code, kind=d.kind, title=d.title,
+                       member_friendly_name=d.member_friendly_name, fields=dict(d.fields))
+               for d in resolved["known"]],
+        unknown=list(resolved["unknown"]),
+    )
