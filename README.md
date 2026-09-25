@@ -138,9 +138,12 @@ no secrets:
 A fourth job, `e2e`, starts Postgres and Weaviate as service containers, migrates,
 ingests the policies, boots the API and then runs `demo_iteration2`, the leakage
 suite and the golden eval at its 85% gate, uploading `eval-reports/` as a build
-artifact. It costs OpenAI money, so it runs only on a manual dispatch
-(**Actions → CI → Run workflow**) or the 02:00 UTC nightly schedule, and only when
-the repository secret `OPENAI_API_KEY` is set.
+artifact. Every one of those steps spends real OpenAI credit, so it is **manual
+only** — **Actions → CI → Run workflow** — and runs only when the repository
+secret `OPENAI_API_KEY` is set. There is deliberately no nightly schedule: this
+repository does not get daily commits, so a nightly run would bill for
+re-proving that untouched code still works. Run it before a demo, or after a
+change worth that money.
 
 
 ---

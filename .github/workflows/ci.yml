@@ -9,8 +9,9 @@
 #
 # The expensive job (e2e) spins up Postgres + Weaviate, runs the real
 # iteration-2 demo, the cross-tenant leakage suite and the golden eval with its
-# 85% gate. It costs OpenAI money, so it runs only on a manual dispatch or the
-# nightly schedule, and only when the OPENAI_API_KEY secret is set.
+# 85% gate. It costs OpenAI money, so it runs only when started by hand
+# (Actions -> CI -> Run workflow), and only when the OPENAI_API_KEY secret is
+# set.
 
 name: CI
 
@@ -19,9 +20,13 @@ on:
     branches: ["**"]
   pull_request:
   workflow_dispatch:
-  schedule:
-    # 02:00 UTC = 07:30 IST
-    - cron: "0 2 * * *"
+  # No schedule. The e2e job spends real OpenAI money every time it runs, and
+  # this repository does not receive daily commits, so a nightly run would bill
+  # for re-proving that untouched code still works. Run it by hand from
+  # Actions -> CI -> Run workflow before a demo or after a significant change.
+  # To go back to nightly, add:
+  #   schedule:
+  #     - cron: "0 2 * * *"      # 02:00 UTC = 07:30 IST
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -86,6 +91,8 @@ jobs:
   e2e:
     name: E2E + leakage + golden eval
     needs: [unit, preflight]
+    # Manual only, and only when a key is configured. 'schedule' is kept in the
+    # condition so re-enabling the cron above is a one-line change.
     if: >-
       needs.preflight.outputs.has_openai == 'true' &&
       (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
