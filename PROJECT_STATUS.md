@@ -397,7 +397,7 @@ on the developer's machine for weeks and could not have built anywhere else.
 | Done (I2) | Circuit breaker | **Verified on user's machine with a real Weaviate outage (2026-09-23)**: closed → open after 3 failures → half_open → closed on recovery; failing call 66s → 6-9s; summaries kept generating without policy citations |
 | Done (I2) | **Postgres indexes (migration 004)** | **Verified on user's machine 2026-09-23** with `scripts/index_check.py`: 10k synthetic rows under a throwaway tenant, then EXPLAIN ANALYZE -- 3/3 queries use Index Scan (review queue 0.57 ms, latest recommendation 0.14 ms, claims by member 0.09 ms). Test data removed afterwards. audit_events not load-tested: its rows cannot be deleted (append-only trigger) |
 | Partly (I2) | Read/write session seam | Code path used on user's machine (audit + review queue). **Replica switch untested** (no replica until AWS phase) |
-| Built (post-I2) | GitHub Actions CI/CD (`.github/workflows/ci.yml`) | **Partly verified on user's machine 2026-09-23.** The two gating jobs were run locally with the workflow's exact commands: `flake8 src/claimbridge tests --select=E9,F63,F7,F82` -> 0 errors, and `pytest tests/unit` -> 41/41 with `DATABASE_URL`, `OPENAI_API_KEY` and `WEAVIATE_URL` unset (proving unit tests need no database and no network). **The workflow itself has never run on GitHub** -- the repo has no remote yet -- so `docker-build` and the `e2e` job (Postgres + Weaviate services, migrations, ingest, demo_iteration2, leakage suite, golden eval at the 85% gate) are built but not verified. `e2e` runs only on manual dispatch or the 02:00 UTC nightly schedule, and only when the `OPENAI_API_KEY` secret is set, so ordinary pushes cost nothing. The legacy `tests.yml` was deleted with the user's permission (2026-09-23): it ran `mypy src/` and `black --check` against unformatted code and would have been permanently red |
+| Done (post-I2) | GitHub Actions CI/CD (`.github/workflows/ci.yml`) | **Verified on GitHub 2026-09-25.** `lint`, `unit` and `docker-build` run on every push and need no secrets; all three green. The `e2e` job -- Postgres + Weaviate service containers, migrations, policy ingest, API startup, `demo_iteration2`, the leakage suite and the golden eval at its 85% gate, with `eval-reports/` uploaded as a build artifact -- **passed on its first run**, started by hand with `OPENAI_API_KEY` set as a repository secret. Manual only: no nightly schedule, because this repo does not get daily commits and each run spends real OpenAI credit. CI earned its keep immediately by catching the empty-`config/` Dockerfile bug, which could never have failed locally. Before any of that, the two gating jobs were run on the user's machine with the workflow's exact commands (flake8 0 errors; `pytest tests/unit` 41/41 with `DATABASE_URL`, `OPENAI_API_KEY` and `WEAVIATE_URL` unset). The legacy `tests.yml` was deleted with the user's permission (2026-09-23): it ran `mypy src/` and `black --check` against unformatted code and would have been permanently red |
 | I3 | Reranking / CRAG-style retrieval check | |
 | After I3 | Encryption at rest | ICD-10, member_id |
 | After I3 | **Postgres primary + read replica** | Read-your-writes: approve -> publish reads from primary |
@@ -407,8 +407,11 @@ on the developer's machine for weeks and could not have built anywhere else.
 ## Next steps
 
 1. Mentor sign-off for Iterations 1, 2 and 3 (raise PR-1 and the CP-001 amounts).
-2. Push the repo to GitHub and run the CI once by hand (Actions -> CI -> Run workflow) with
-   `OPENAI_API_KEY` set as a repository secret. Until that run exists, CI is code, not a
-   guarantee. Everything since the first commit is still uncommitted locally.
+2. MCP server. It is the last gap against the stack this project set out to use
+   (Python, LangChain/LangGraph, RAG, VectorDB, MCP): `src/claimbridge/mcp/__init__.py`
+   is still an empty docstring, and `config.MCP_TOOL_VALIDATION_ENABLED` is referenced
+   nowhere. Exposing claim lookup, policy search and recommendation as MCP tools has to
+   carry the tenant scoping and RBAC with it -- an MCP tool that skipped those would be
+   a second, unaudited door into another tenant's data.
 3. **When the agent is complete: a full walkthrough + practice guide for Manish** — every
    module, endpoint and command explained simply, with exercises (requested 2026-09-22).
