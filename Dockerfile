@@ -15,6 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY src/ src/
 COPY resources/ resources/
+# The reviewer console, served at /console.
+COPY web/ web/
 
 # Copy alembic migration files
 COPY alembic/ alembic/

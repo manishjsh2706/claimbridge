@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<!--
+  ClaimBridge reviewer console
+  ============================
+  The human's door into ClaimBridge. Deliberately a pure client: it holds no
+  secrets, talks only to /v1, and contains no business logic -- every decision
+  it displays was made by the API. That is what makes it replaceable (by React,
+  by Angular, by an insurer's own portal) without touching the backend, and what
+  makes it safe to serve from anywhere the API is reachable.
+
+  It is also where approve and publish belong. The MCP server has no such tools,
+  on purpose: four-eyes approval only means something while a machine cannot do
+  it. This page is the person.
+
+  No build step, no framework, no CDN. One file.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClaimBridge Reviewer</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #14181f; --muted: #5b6472;
+    --line: #e2e6eb; --accent: #1f5fd0; --ok: #0f7a4d; --warn: #9a5b00;
+    --bad: #b02a2a; --chip: #eef1f5; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10131a; --panel: #171b24; --ink: #e8ebf0; --muted: #98a2b3;
+      --line: #262c38; --accent: #6fa0ff; --ok: #4ec98d; --warn: #e0a33c;
+      --bad: #ef6f6f; --chip: #1f2531;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.55 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { background: var(--panel); border-bottom: 1px solid var(--line);
+           padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  header h1 { font-size: 16px; margin: 0 12px 0 0; font-weight: 650; letter-spacing: -.01em; }
+  header .grow { flex: 1; }
+  select, input, button { font: inherit; color: var(--ink); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; }
+  input { min-width: 260px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.ok { background: var(--ok); border-color: var(--ok); color: #fff; font-weight: 600; }
+  button.bad { background: transparent; border-color: var(--bad); color: var(--bad); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  main { display: grid; grid-template-columns: 340px 1fr; gap: 16px; padding: 16px;
+         align-items: start; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .panel > h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .panel > .body { padding: 14px; }
+  .row { padding: 11px 14px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .row:last-child { border-bottom: 0; }
+  .row:hover { background: var(--chip); }
+  .row.sel { background: var(--chip); box-shadow: inset 3px 0 0 var(--accent); }
+  .row .id { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .chip { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 7px;
+    border-radius: 20px; background: var(--chip); color: var(--muted); letter-spacing: .02em; }
+  .chip.member { color: var(--accent); }
+  .chip.provider { color: var(--warn); }
+  .chip.PUBLISHED { color: var(--ok); }
+  .chip.PENDING_REVIEW { color: var(--warn); }
+  .chip.DRAFT { color: var(--muted); }
+  h3 { font-size: 14px; margin: 18px 0 6px; }
+  h3:first-child { margin-top: 0; }
+  p { margin: 0 0 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  td, th { text-align: left; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; width: 40%; }
+  td.num { font-family: var(--mono); }
+  ul { margin: 0 0 10px; padding-left: 20px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  .cite { font-family: var(--mono); font-size: 12px; }
+  .toast { margin: 0 16px; padding: 10px 14px; border-radius: 8px; font-size: 14px;
+    border: 1px solid var(--line); background: var(--panel); }
+  .toast.ok { border-color: var(--ok); color: var(--ok); }
+  .toast.bad { border-color: var(--bad); color: var(--bad); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px;
+    border-top: 1px solid var(--line); align-items: center; }
+  .tabs { display: flex; gap: 4px; padding: 10px 14px 0; }
+  .tabs button { border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+    border-bottom-color: transparent; }
+  .tabs button[aria-selected="true"] { background: var(--chip); font-weight: 600; }
+  pre { background: var(--chip); padding: 10px 12px; border-radius: 8px; overflow: auto;
+    font-family: var(--mono); font-size: 12px; margin: 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ClaimBridge <span class="muted" style="font-weight:400">reviewer</span></h1>
+  <select id="tenant">
+    <option value="pacific-hmo">Pacific HMO</option>
+    <option value="coastal-ppo">Coastal PPO</option>
+    <option value="summit-employer">Summit Employer (onboarding)</option>
+  </select>
+  <input id="key" type="password" placeholder="X-Api-Key (cbk_...)" autocomplete="off">
+  <button class="primary" id="connect">Connect</button>
+  <span class="grow"></span>
+  <span id="who" class="small muted">not connected</span>
+</header>
+
+<div id="toast" class="toast" hidden></div>
+
+<main>
+  <section class="panel">
+    <h2>Waiting for review</h2>
+    <div id="queue"><div class="body muted small">Connect to load the queue.</div></div>
+    <h2 style="border-top:1px solid var(--line)">Approved &mdash; ready to publish</h2>
+    <div id="approved"><div class="body muted small">&nbsp;</div></div>
+  </section>
+
+  <section class="panel">
+    <h2 id="detailTitle">Draft</h2>
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="draft">Draft</button>
+      <button role="tab" aria-selected="false" data-tab="claim">Claim &amp; recommendation</button>
+      <button role="tab" aria-selected="false" data-tab="audit">Audit trail</button>
+      <button role="tab" aria-selected="false" data-tab="raw">Raw</button>
+    </div>
+    <div class="body" id="detail"><span class="muted small">Pick a draft on the left.</span></div>
+    <div class="actions" id="actions" hidden>
+      <button class="ok" id="approve">Approve</button>
+      <button class="primary" id="publish">Publish</button>
+      <button class="bad" id="reject">Send back to DRAFT</button>
+      <span class="small muted">The approver cannot be the author — the API enforces it.</span>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+// The key lives here and nowhere else: never written to localStorage, never put
+// in a URL. Reloading the page forgets it, which is the correct trade for a
+// console that may one day be served over the internet.
+let API_KEY = "";
+let tenant = "pacific-hmo";
+let selected = null;
+let tab = "draft";
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function toast(message, kind) {
+  const el = $("toast");
+  el.textContent = message;
+  el.className = "toast" + (kind ? " " + kind : "");
+  el.hidden = false;
+  if (kind === "ok") setTimeout(() => { el.hidden = true; }, 6000);
+}
+
+async function api(path, options = {}) {
+  const res = await fetch("/v1" + path, {
+    ...options,
+    headers: { "X-Api-Key": API_KEY, "Content-Type": "application/json", ...(options.headers || {}) },
+  });
+  const text = await res.text();
+  let body = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = { detail: text }; }
+  if (!res.ok) {
+    const detail = (body && (body.detail || body.error)) || res.statusText;
+    // The status code is kept in the message on purpose: a 403 here is the
+    // four-eyes rule or tenant scoping working, not a failure to hide.
+    const err = new Error("HTTP " + res.status + " — " + detail);
+    err.status = res.status;
+    throw err;
+  }
+  return body;
+}
+
+// ---------------------------------------------------------------- connect
+
+$("connect").onclick = async () => {
+  API_KEY = $("key").value.trim();
+  if (!API_KEY) return toast("Paste an API key first.", "bad");
+  try {
+    const me = await api("/whoami");
+    $("who").textContent = `${me.principal_id} · ${me.role} · ${me.tenant_id || "all tenants"}`;
+    if (me.tenant_id) { tenant = me.tenant_id; $("tenant").value = me.tenant_id; }
+    toast(`Connected as ${me.principal_id} (${me.role}). Permissions: ${me.permissions.join(", ")}`, "ok");
+    loadQueue();
+  } catch (e) {
+    $("who").textContent = "not connected";
+    toast(e.message, "bad");
+  }
+};
+
+$("tenant").onchange = () => {
+  tenant = $("tenant").value;
+  selected = null;
+  $("detail").innerHTML = '<span class="muted small">Pick a draft on the left.</span>';
+  $("detailTitle").textContent = "Draft";
+  $("actions").hidden = true;
+  if (API_KEY) loadQueue();
+};
+
+$("key").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
+
+// ---------------------------------------------------------------- queue
+
+// Two lists, because approving moves a draft out of the review queue while the
+// next step -- publishing it -- still needs it. Without the second list an
+// approved draft simply vanished from the console, which is how this gap was
+// found: by approving something and then looking for it.
+function loadQueue() {
+  fillList("queue", "PENDING_REVIEW", "Nothing waiting for review in this plan.");
+  fillList("approved", "APPROVED", "Nothing approved and unpublished.");
+}
+
+async function fillList(boxId, status, emptyText) {
+  const box = $(boxId);
+  box.innerHTML = '<div class="body muted small">Loading…</div>';
+  try {
+    const rows = await api(`/tenants/${tenant}/review-queue?status=${status}&limit=50`);
+    if (!rows.length) {
+      box.innerHTML = `<div class="body muted small">${esc(emptyText)}</div>`;
+      return;
+    }
+    box.innerHTML = rows.map((r) => `
+      <div class="row${selected && selected.id === r.id ? " sel" : ""}" data-id="${r.id}">
+        <div><span class="chip ${esc(r.audience)}">${esc(r.audience)}</span>
+             <span class="id">${esc(r.claim_id)}</span></div>
+        <div class="small muted">#${r.id} · by ${esc(r.created_by)}${
+          r.approved_by ? ` · approved by ${esc(r.approved_by)}` : ""} · ${fmt(r.created_at)}</div>
+      </div>`).join("");
+    box.querySelectorAll(".row").forEach((el) =>
+      el.onclick = () => open(Number(el.dataset.id)));
+  } catch (e) {
+    box.innerHTML = `<div class="body small" style="color:var(--bad)">${esc(e.message)}</div>`;
+  }
+}
+
+function fmt(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  return isNaN(d) ? String(ts) : d.toLocaleString();
+}
+
+// ---------------------------------------------------------------- detail
+
+async function open(id) {
+  try {
+    selected = await api(`/tenants/${tenant}/communications/${id}`);
+    $("detailTitle").textContent =
+      `${selected.audience} draft #${selected.id} — ${selected.claim_id}`;
+    $("actions").hidden = false;
+    loadQueue();
+    render();
+  } catch (e) { toast(e.message, "bad"); }
+}
+
+document.querySelectorAll('[role="tab"]').forEach((b) => b.onclick = () => {
+  tab = b.dataset.tab;
+  document.querySelectorAll('[role="tab"]').forEach((x) =>
+    x.setAttribute("aria-selected", String(x === b)));
+  render();
+});
+
+async function render() {
+  if (!selected) return;
+  const el = $("detail");
+  if (tab === "raw") {
+    el.innerHTML = `<pre>${esc(JSON.stringify(selected, null, 2))}</pre>`;
+  } else if (tab === "draft") {
+    el.innerHTML = selected.audience === "member"
+      ? memberView(selected) : providerView(selected);
+  } else if (tab === "claim") {
+    el.innerHTML = '<span class="muted small">Loading…</span>';
+    try {
+      const claim = await api(`/tenants/${tenant}/claims/${selected.claim_id}`);
+      el.innerHTML = claimView(claim);
+    } catch (e) { el.innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`; }
+  } else {
+    el.innerHTML = '<span class="muted small">Loading…</span>';
+    try {
+      const events = await api(`/tenants/${tenant}/claims/${selected.claim_id}/audit-events`);
+      el.innerHTML = auditView(events);
+    } catch (e) { el.innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`; }
+  }
+}
+
+function money(v) { return v === null || v === undefined ? "—" : "$" + v; }
+
+// Two shapes reach this function and they do not use the same names. A draft
+// carries summaries.schemas.Amounts (billed / allowed / plan_paid / you_owe);
+// the claim view carries the raw adjudication row (billed_amount /
+// allowed_amount / plan_paid / patient_responsibility). Reading only the first
+// set silently showed every amount as "—" except plan_paid, which happens to be
+// spelled the same in both -- a dash that looks like missing data rather than a
+// bug, which is what made it worth fixing properly instead of guessing again.
+function pick(o, ...names) {
+  for (const n of names) if (o[n] !== undefined && o[n] !== null) return o[n];
+  return null;
+}
+
+function amountsTable(a) {
+  if (!a) return "";
+  return `<table>
+    <tr><th>Billed</th><td class="num">${money(pick(a, "billed", "billed_amount"))}</td></tr>
+    <tr><th>Allowed</th><td class="num">${money(pick(a, "allowed", "allowed_amount"))}</td></tr>
+    <tr><th>Plan paid</th><td class="num">${money(pick(a, "plan_paid"))}</td></tr>
+    <tr><th>You owe</th><td class="num">${money(pick(a, "you_owe", "patient_responsibility"))}</td></tr>
+  </table>`;
+}
+
+function citations(list, label) {
+  if (!list || !list.length) return "";
+  return `<h3>${label}</h3><ul class="cite">` + list.map((c) =>
+    `<li>${esc(c.code ? c.code + " — " + (c.label || "") : (c.document || "") + "#" + (c.section || ""))}</li>`
+  ).join("") + "</ul>";
+}
+
+function memberView(c) {
+  const d = c.content || {};
+  return `
+    <div><span class="chip ${esc(c.status)}">${esc(c.status)}</span>
+         <span class="chip">${esc(d.outcome || "")}</span>
+         <span class="small muted"> model: ${esc(c.model || "—")} · prompt: ${esc(c.prompt_version || "—")}</span></div>
+    <h3>${esc(d.service_description || "")}</h3>
+    <p>${esc(d.plain_language_summary || "")}</p>
+    <h3>What happened</h3><p>${esc(d.what_happened || "")}</p>
+    <h3>Why it was adjusted</h3><p>${esc(d.why_adjusted || "")}</p>
+    <h3>Amounts</h3>${amountsTable(d.amounts)}
+    ${d.amounts_note ? `<p class="small muted">${esc(d.amounts_note)}</p>` : ""}
+    <h3>Next steps</h3><ul>${(d.next_steps || []).map((s) => `<li>${esc(s)}</li>`).join("")}</ul>
+    <h3>Appeal rights</h3><p class="small">${esc(d.appeal_rights_summary || "")}</p>
+    ${citations(d.citations, "Sources")}
+    ${(d.unexplained_codes || []).length
+      ? `<p class="small" style="color:var(--warn)">Codes with no approved definition: ${esc(d.unexplained_codes.join(", "))} — routed to a human.</p>` : ""}`;
+}
+
+function providerView(c) {
+  const d = c.content || {};
+  return `
+    <div><span class="chip ${esc(c.status)}">${esc(c.status)}</span>
+         <span class="chip">${esc(d.outcome || "")}</span>
+         <span class="small muted"> model: ${esc(c.model || "—")}</span></div>
+    <h3>Technical summary</h3><p>${esc(d.technical_summary || "")}</p>
+    <h3>Codes</h3><p class="cite">CARC ${esc((d.codes?.carc || []).join(", ") || "—")}
+      · RARC ${esc((d.codes?.rarc || []).join(", ") || "—")}</p>
+    <h3>Amounts</h3>${amountsTable(d.amounts)}
+    <h3>Correction actions</h3>
+    <ul>${(d.correction_actions || []).map((s) => `<li>${esc(s)}</li>`).join("")}</ul>
+    <h3>Resubmission</h3><p>${esc(d.resubmission_instructions || "")}</p>
+    ${citations(d.code_citations, "Code definitions")}
+    ${citations(d.policy_citations, "Plan policy")}`;
+}
+
+function claimView(c) {
+  const a = c.adjudication || {};
+  const r = c.recommendation || {};
+  return `
+    <h3>${esc(c.claim_id)} <span class="chip">${esc(c.intake_status)}</span></h3>
+    <table>
+      <tr><th>Member</th><td>${esc(c.member_id)}</td></tr>
+      <tr><th>Date of service</th><td>${esc(c.date_of_service || "—")}</td></tr>
+      <tr><th>Provider</th><td>${esc(c.provider_name || "—")}</td></tr>
+      <tr><th>Outcome</th><td>${esc(a.outcome || "not adjudicated yet")}</td></tr>
+      <tr><th>CARC / RARC</th><td class="cite">${esc((a.carc_codes || []).concat(a.rarc_codes || []).join(", ") || "—")}</td></tr>
+    </table>
+    ${(c.validation_issues || []).length ? `<h3>Validation issues</h3><ul>${
+      c.validation_issues.map((i) => `<li>${esc(i.field || "")}: ${esc(i.message || JSON.stringify(i))}</li>`).join("")}</ul>` : ""}
+    <h3>Recommendation</h3>
+    ${r.recommendation ? `<p><span class="chip">${esc(r.recommendation)}</span>
+      <span class="small muted">rules ${esc(r.rules_version || "—")}</span></p>
+      <p>${esc(r.rationale || "")}</p>
+      <p class="small muted">Decided by the rules engine, not the model: same claim in, same
+      answer out, and <span class="cite">${esc(r.rules_version || "")}</span> records which
+      rules decided.</p>` : '<p class="muted small">None yet.</p>'}
+    ${citations(r.citations, "Cited sources")}`;
+}
+
+function auditView(events) {
+  if (!events || !events.length) return '<span class="muted small">No events.</span>';
+  return `<table><tr><th style="width:26%">When</th><th style="width:30%">Action</th><th>Actor</th></tr>` +
+    events.map((e) => `<tr><td class="small">${fmt(e.created_at)}</td>
+      <td class="cite">${esc(e.action)}</td><td class="small">${esc(e.actor)}</td></tr>`).join("") +
+    `</table><p class="small muted" style="margin-top:10px">Append-only: a database trigger
+     rejects UPDATE and DELETE on this table, so this trail cannot be quietly rewritten.</p>`;
+}
+
+// ---------------------------------------------------------------- actions
+
+async function act(verb, label) {
+  if (!selected) return;
+  const buttons = $("actions").querySelectorAll("button");
+  buttons.forEach((b) => b.disabled = true);
+  try {
+    const out = await api(`/tenants/${tenant}/communications/${selected.id}/${verb}`, {
+      method: "POST", body: JSON.stringify({ note: `${label} from the reviewer console` }),
+    });
+    selected = out;
+    toast(`#${out.id} is now ${out.status}` +
+          (out.approved_by ? ` (approved by ${out.approved_by})` : ""), "ok");
+    render();
+    loadQueue();
+  } catch (e) {
+    // Name the rule that refused, not a list of rules that might have. The API
+    // already says which one; repeating "either this or that" after it made the
+    // console look unsure of its own system.
+    let why = e.message;
+    if (e.status === 403) {
+      if (/may not perform/.test(e.message))
+        why += "  ← this role is read-only for review actions; acting needs review:act.";
+      else if (/not valid for tenant/.test(e.message))
+        why += "  ← this key belongs to a different health plan.";
+      else
+        why += "  ← four-eyes: whoever generated this draft cannot be the one who approves it.";
+    }
+    if (e.status === 409)
+      why += "  ← not a legal move from the current state (already published, or the plan is still ONBOARDING).";
+    toast(why, "bad");
+  } finally {
+    buttons.forEach((b) => b.disabled = false);
+  }
+}
+
+$("approve").onclick = () => act("approve", "Approved");
+$("publish").onclick = () => act("publish", "Published");
+$("reject").onclick = () => act("reject", "Sent back");
+</script>
+</body>
+</html>

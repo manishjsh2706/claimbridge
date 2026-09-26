@@ -124,6 +124,27 @@ Headers: `X-Api-Key` (required), `Idempotency-Key` (POST /claims), `X-Correlatio
 | `src/claimbridge/scripts/` | ingest, seed, api_keys, submit_fixture, demo_iteration2, demo_iteration3, run_golden_eval, leakage_suite, onboarding_summit, index_check |
 | `.github/workflows/ci.yml` | CI: lint, unit tests, Docker build on every push; e2e + golden eval on demand |
 
+## Reviewer console
+
+`http://localhost:8000/console` — one static HTML file (`web/console.html`), served
+by the API itself. No build step, no framework, no CDN, no browser storage.
+
+It shows the review queue, the approved-and-unpublished queue, the rendered member
+summary or provider notice with its citations, the claim and its recommendation,
+and the append-only audit trail. Approve, publish and send-back are here.
+
+**This is the human's door, and that is the point.** The MCP server has no
+approve tool on purpose: four-eyes approval (author ≠ approver) only means
+anything while a machine cannot do it. A refusal shows the rule that refused —
+a read-only role, another plan's key, or four-eyes — because in a demo the
+refusal *is* the feature.
+
+The console is a pure client of `/v1`: no secrets, no business logic, nothing
+it could enforce or bypass on its own. The API key is typed in and kept in
+memory only, never stored. That is what makes it replaceable — a React or
+Angular front end would call exactly the same routes — and what makes it safe to
+serve from anywhere the API is reachable.
+
 ## MCP server
 
 `src/claimbridge/mcp/server.py` exposes ClaimBridge to AI assistants over the

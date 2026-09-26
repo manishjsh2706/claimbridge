@@ -6,8 +6,10 @@ Proper multi-tenant isolation:
 - Body = Claim details only (NO customer/company info)
 """
 
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException, Depends, Header
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional
 import logging
@@ -43,6 +45,24 @@ app = FastAPI(
 )
 
 app.include_router(v1_router)
+
+
+# The reviewer console: one static page, served from the same origin as the API
+# so there is no CORS to configure and no second thing to deploy. It is a pure
+# client of /v1 -- no secrets, no business logic -- which is what lets a React or
+# Angular front end replace it later without the backend noticing.
+#
+# This is also where approve and publish live. The MCP server has no such tools
+# on purpose: four-eyes approval only means something while a machine cannot do
+# it, so the human needs a door of their own, and this is it.
+_CONSOLE = Path(__file__).resolve().parents[2] / "web" / "console.html"
+
+
+@app.get("/console", include_in_schema=False)
+def reviewer_console():
+    if not _CONSOLE.exists():
+        raise HTTPException(status_code=404, detail="console not deployed with this image")
+    return FileResponse(_CONSOLE, media_type="text/html")
 
 
 # ==================== PYDANTIC MODELS ====================

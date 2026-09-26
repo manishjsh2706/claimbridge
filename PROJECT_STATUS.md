@@ -410,6 +410,56 @@ on the developer's machine for weeks and could not have built anywhere else.
 
 ---
 
+## Reviewer console (2026-09-26)
+
+`web/console.html`, served at `/console` by the API. One file, no build step, no
+framework, no CDN, no browser storage. It exists because the demo was terminal
+output, and a reviewer queue with an Approve button explains the system in five
+seconds where a log does not.
+
+Deliberately **not** React or Angular yet. The owner will build one later; the
+point today was the demo, and a half-finished SPA adds a stack without adding an
+argument. Because the console is a pure client of `/v1` -- no secrets, no
+business logic -- swapping it for React later touches no backend code, which is
+itself the thing worth saying about it.
+
+It is also, architecturally, the right home for Approve and Publish. The MCP
+server has no such tools on purpose; four-eyes only means something while a
+machine cannot do it, so the human needs a door, and this is it.
+
+**Verified on the user's machine 2026-09-26**, clicking through rather than
+asserting: connected as `reviewer-console (reviewer)`; opened member draft #10173
+on CLAIM-PH-003; Approve moved it to APPROVED with `approved_by` recorded;
+Publish moved it to PUBLISHED; reconnecting as `mcp-demo (auditor)` and pressing
+Approve returned **HTTP 403 — Role 'auditor' may not perform 'review:act'**.
+
+Three real defects came out of that click-through, none of which a test would
+have caught:
+
+1. **Every amount but one showed as "—".** `summaries.schemas.Amounts` uses
+   `billed` / `allowed` / `plan_paid` / `you_owe`; the console had guessed
+   `billed_amount` / `allowed_amount` / `member_owes`. Only `plan_paid` matched,
+   so the table looked like missing data rather than a bug. It now reads both
+   spellings, because the claim view really does carry the other one.
+2. **Approving made a draft vanish.** The queue lists PENDING_REVIEW, so an
+   approved draft left it -- while the next step, publishing, still needed it.
+   Approved-and-unpublished was a real state of the workflow with nothing that
+   could show it. `GET /review-queue` now takes an optional `status`
+   (default PENDING_REVIEW, so existing callers are unaffected) and the console
+   has a second list.
+3. **A 403 explained itself badly.** The API says exactly which rule refused;
+   the console appended "either the role, or four-eyes" after it and made the
+   system look unsure of itself. Each 403 now names its own cause.
+
+**Spec note:** `problem-statement.md` lists "Member portal stub that displays
+approved summaries only" under Stretch Goals. This console is the *reviewer*
+view and does not satisfy that -- it shows drafts, which a member must never
+see. The member stub is still open, and it would make the duplicate-PUBLISHED
+gap (open issue 5) visible at a glance: a member portal today would show six
+summaries for CLAIM-PH-004.
+
+---
+
 ## MCP server (2026-09-26)
 
 The last gap against the stack this project set out to use. `mcp/__init__.py`

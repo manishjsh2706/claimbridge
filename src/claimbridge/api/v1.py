@@ -398,18 +398,29 @@ def _to_out(comm: Communication) -> CommunicationOut:
 
 
 @router.get("/tenants/{tenant_id}/review-queue", response_model=List[CommunicationOut],
-            summary="Drafts waiting for a reviewer, oldest first")
+            summary="Communications at one point in the review workflow, oldest first")
 def review_queue(
     tenant_id: str = Depends(tenant_path),
     ctx: RequestContext = Depends(authorize("review:read")),
     audience: Optional[str] = Query(default=None, pattern="^(member|provider)$"),
+    status: str = Query(default="PENDING_REVIEW",
+                        pattern="^(DRAFT|PENDING_REVIEW|APPROVED|PUBLISHED)$",
+                        description="Defaults to PENDING_REVIEW, the review queue proper."),
     limit: int = Query(default=50, ge=1, le=200),
 ):
+    """
+    `status` defaults to PENDING_REVIEW, so existing callers see no change.
+
+    It exists because approving a draft moved it out of every list the reviewer
+    console could show, while the next step -- publishing it -- still needed it.
+    Approved-and-unpublished was a real state of the workflow with no way to
+    look at it, which is the kind of gap a UI finds and a test suite does not.
+    """
     with read_session_scope() as session:        # list view: replica-safe
         if session.get(Tenant, tenant_id) is None:
             raise HTTPException(status_code=404, detail=f"Tenant '{tenant_id}' not found")
         q = (select(Communication).where(Communication.tenant_id == tenant_id,
-                                         Communication.status == "PENDING_REVIEW")
+                                         Communication.status == status)
              .order_by(Communication.created_at, Communication.id).limit(limit))
         if audience:
             q = q.where(Communication.audience == audience)
