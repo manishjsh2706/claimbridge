@@ -204,6 +204,29 @@ raised to 45 s because hybrid search embeds the query through OpenAI first.
    plainly rather than quietly re-running until it is green.
 4. Weaviate deprecation warnings (`vectorizer_config`); `@app.on_event` is
    deprecated in favour of lifespan handlers.
+5. **A claim can end up with several PUBLISHED communications for the same
+   audience. Found 2026-09-26, through the new MCP server.** CLAIM-PH-004
+   currently has 31 communications from roughly twenty demo and eval runs across
+   four days -- that part is by design: a draft is never mutated or deleted, and
+   re-running the pipeline sends the previous `PENDING_REVIEW` draft back to
+   `DRAFT` with a "superseded by N" note. But six of those member rows and five
+   provider rows are `PUBLISHED`, because `review/pipeline.py` supersedes only
+   `PENDING_REVIEW` drafts and leaves anything already published alone.
+
+   So "the published member summary for this claim" has no single answer today.
+   A member portal reading it would get six rows and have to choose, which is
+   the sort of choice that belongs in the system, not in each consumer.
+
+   The fix is a `SUPERSEDED` terminal state: publishing sends any previously
+   published communication for the same claim and audience to `SUPERSEDED`
+   rather than deleting it, so the history stays intact and exactly one row is
+   current. Not done here because it changes the state machine and deserves its
+   own commit, its own DB CHECK constraint update and its own eval run.
+
+   Worth noting how it surfaced: the REST API is read one claim at a time, so
+   attention always landed on the newest draft. The MCP server returned the
+   whole list at once and the pattern was obvious. A second way of reading the
+   same data found something months of using the first way had not.
 
 ---
 
@@ -439,8 +462,21 @@ Ten tool tests live in `tests/mcp/` against a stand-in ClaimBridge (no database,
 no Weaviate, no OpenAI) and run in their own CI job, including the two that
 matter most: no tool takes a tenant argument, and no write tool exists.
 
-**Not yet verified:** connecting a real MCP client (Claude Desktop) to it.
-`--check` proves the tools and the key; it does not prove the stdio handshake.
+**Verified end to end with a real client, 2026-09-26.** Claude Desktop was
+pointed at the server (`docker compose ... run --rm -T mcp`, stdio) alongside an
+unrelated MCP server that kept working. Asked "why was CLAIM-PH-004 denied, and
+what does Pacific's prior-auth policy say?", it called the tools and answered
+from real data: CO-197, no auth number on the claim, rule
+`pacific.prior-auth.imaging`, `rules-2026-09-22.1`, and the four policy sections
+by their citation paths. The same tools then appeared in this Cowork session,
+which is independent confirmation that the stdio handshake works.
+
+The config lives at
+`%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json`
+-- the Store-packaged install redirects `%APPDATA%\Claude`, and the unpackaged
+path exists too but is not what the app reads. Checking which one actually held
+`claude_desktop_config.json` avoided writing the config where nothing would have
+read it.
 
 Two bugs caught by checking rather than assuming. The `mcp` 2.x SDK renamed
 `FastMCP` to `MCPServer`, so every tutorial online is wrong; written from memory
