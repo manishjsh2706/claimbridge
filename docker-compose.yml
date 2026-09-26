@@ -77,6 +77,27 @@ services:
       - ./eval-reports:/app/eval-reports
       - ./tests:/app/tests
 
+  # Started on demand by an MCP client (Claude Desktop), never by `up -d` --
+  # hence the profile. stdio transport means the client owns this process's
+  # stdin/stdout, so it lives exactly as long as the conversation does.
+  #
+  #   docker compose run --rm -T mcp
+  #
+  # It joins this network to reach the API by service name, and it holds an
+  # API key rather than database credentials: whatever that key's role and
+  # tenant allow is the whole of what it can see.
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    image: claimbridge-mcp
+    profiles: ["mcp"]
+    environment:
+      CLAIMBRIDGE_API_URL: http://claimbridge:8000
+      CLAIMBRIDGE_API_KEY: ${CLAIMBRIDGE_API_KEY:-}
+    depends_on:
+      - claimbridge
+
 volumes:
   postgres_data:
   weaviate_data:

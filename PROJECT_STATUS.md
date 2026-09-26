@@ -387,6 +387,70 @@ on the developer's machine for weeks and could not have built anywhere else.
 
 ---
 
+## MCP server (2026-09-26)
+
+The last gap against the stack this project set out to use. `mcp/__init__.py`
+had been an empty docstring since the skeleton, and
+`config.MCP_TOOL_VALIDATION_ENABLED` was referenced nowhere.
+
+**The decision that shaped everything: the MCP server is an ordinary API
+client.** It holds an API key and calls `/v1`; it has no database session and no
+Weaviate connection. The alternative -- importing the application and reading
+the database -- was faster by one network hop and would have meant
+re-implementing tenant scoping, permission checks and audit logging inside the
+tool code: three guarantees with two implementations each, free to drift. The
+leakage suite tests the API; a second door that re-implemented its rules would
+not be covered by it. Here the server is on the far side of the same door, so
+the worst its own bugs can do is what its key already allows.
+
+That choice also settled a dependency problem on its own: `mcp` requires
+anyio >= 4 and FastAPI 0.104 requires anyio < 4, so they cannot share an
+environment until FastAPI is upgraded. The split was chosen on merit, not to
+dodge that; the conflict merely confirmed it.
+
+**Blast radius, not capability, chose the tools.** Six, all read-only:
+`whoami`, `get_claim`, `get_recommendation`, `search_policy`, `explain_codes`,
+`review_queue`. `approve` / `publish` / `reject` are absent because as tools
+they would let an assistant generate a draft and approve its own work in the
+next call -- four-eyes designed away rather than bypassed. `submit_claim` is
+absent because a tool that creates records is a tool prompt injection can aim.
+
+The tenant comes from the key, resolved once via a new `GET /v1/whoami`. **No
+tool takes a tenant argument**, so an injected "look up the Coastal claim" has
+nothing to aim at, and a key not scoped to one plan is refused at startup.
+
+Two new read-only endpoints back the tools: `GET /policy-search?q=` (tenant
+pre-filtered inside the Weaviate query, hits re-checked afterwards, degraded
+rather than failing on an outage, audited as POLICY_SEARCHED) and
+`GET /codes?code=` (exact lookup; unknown codes reported, not guessed; not
+audited, because the reference is shared published data and logging reads of it
+would bury the events that matter).
+
+**Verified on the user's machine 2026-09-26.** `server.py --check` ran all six
+tools against the real API from inside the container, 6/6: identity
+`mcp-demo (auditor) on pacific-hmo`; CLAIM-PH-004 VALIDATED, outcome DENY, 31
+communications; recommendation DENY with `rules-2026-09-22.1`; policy search
+returned `imaging.mri`, `prior-auth.imaging`, `provider.prior-auth-submission`,
+`denial.prior-auth`; CO-197 known and ZZ-999 unknown; 5 drafts waiting. The
+endpoints were verified separately first, including the same Pacific key being
+refused 403 against `coastal-ppo`.
+
+Ten tool tests live in `tests/mcp/` against a stand-in ClaimBridge (no database,
+no Weaviate, no OpenAI) and run in their own CI job, including the two that
+matter most: no tool takes a tenant argument, and no write tool exists.
+
+**Not yet verified:** connecting a real MCP client (Claude Desktop) to it.
+`--check` proves the tools and the key; it does not prove the stdio handshake.
+
+Two bugs caught by checking rather than assuming. The `mcp` 2.x SDK renamed
+`FastMCP` to `MCPServer`, so every tutorial online is wrong; written from memory
+this would have failed on import. And the first real run returned 404 on every
+tool because the API container was running code older than the client expected
+-- FastAPI's bare "Not Found" read exactly like a missing record, so the error
+message now names that case explicitly.
+
+---
+
 ## Production roadmap (agreed 2026-09-22, built alongside the spec iterations)
 
 | When | Feature | Note |

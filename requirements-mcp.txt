@@ -1,0 +1,13 @@
+# Dependencies for the MCP server ONLY (Dockerfile.mcp).
+#
+# Deliberately not requirements.txt. The MCP SDK needs anyio >= 4; the API's
+# FastAPI 0.104 pin needs anyio < 4, so the two cannot share an environment
+# today. But even once FastAPI is upgraded these stay apart: the MCP server
+# reaches ClaimBridge over HTTP with an API key, so it has no reason to be able
+# to import the application, and every dependency it does not have is one it
+# cannot be talked into using.
+#
+# The image built from these two lines contains one Python file and no database
+# driver. It could not read the database if its code tried.
+mcp>=2.2,<3
+httpx>=0.28,<1

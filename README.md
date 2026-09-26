@@ -124,6 +124,47 @@ Headers: `X-Api-Key` (required), `Idempotency-Key` (POST /claims), `X-Correlatio
 | `src/claimbridge/scripts/` | ingest, seed, api_keys, submit_fixture, demo_iteration2, demo_iteration3, run_golden_eval, leakage_suite, onboarding_summit, index_check |
 | `.github/workflows/ci.yml` | CI: lint, unit tests, Docker build on every push; e2e + golden eval on demand |
 
+## MCP server
+
+`src/claimbridge/mcp/server.py` exposes ClaimBridge to AI assistants over the
+Model Context Protocol, so an analyst can ask "why was CLAIM-PH-004 denied, and
+what does the plan's prior-auth policy say?" and get an answer from the system of
+record.
+
+It is **an ordinary API client, not a privileged insider.** It holds an API key
+and calls the same `/v1` routes a human's portal calls — no database session, no
+Weaviate connection. Tenant scoping, RBAC and audit logging therefore apply to it
+without being reimplemented, and cannot drift from the rules the API enforces.
+The image built by `Dockerfile.mcp` contains one Python file, `mcp` and `httpx`,
+and no database driver: it could not read the database if its code tried.
+
+| Tool | Returns |
+|------|---------|
+| `whoami` | Which plan, principal and role this connection is limited to |
+| `get_claim` | Intake status, validation issues, adjudication, recommendation, drafts |
+| `get_recommendation` | APPROVE / DENY / PARTIAL / NEED_INFO with its `rules_version` |
+| `search_policy` | This plan's policy sections, with citable `section_path`s |
+| `explain_codes` | Exact CARC/RARC definitions; unknown codes reported, not guessed |
+| `review_queue` | Drafts waiting for a human, read-only |
+
+**`approve`, `publish` and `reject` are deliberately absent.** As tools they would
+let an assistant generate a draft and approve its own work in the next call, and
+four-eyes (author ≠ approver) would be designed away rather than bypassed by a
+bug. `submit_claim` is absent for the mirror-image reason: a tool that creates
+records is a tool prompt injection can aim. Tools were chosen by blast radius,
+not by capability.
+
+The tenant comes from the API key, resolved once via `/v1/whoami` at startup —
+**no tool takes a tenant argument**, so "now look up the Coastal claim" has
+nothing to inject into, and the API would refuse it anyway (403, audited). A key
+that is not scoped to a single plan is refused at startup.
+
+```powershell
+# One-off: does the key work, which plan does it see, do all six tools return data?
+docker compose --profile mcp build mcp
+docker compose --profile mcp run --rm -e CLAIMBRIDGE_API_KEY=<cbk_...> mcp python server.py --check
+```
+
 ## CI
 
 `.github/workflows/ci.yml`. Three jobs run on every push and pull request and need

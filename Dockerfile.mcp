@@ -1,0 +1,17 @@
+# The MCP server: one file, two dependencies, no database driver.
+#
+# It talks to ClaimBridge over /v1 with an API key, exactly as a human's portal
+# would, so tenant scoping, RBAC and audit logging apply to it without being
+# reimplemented here. Copying only server.py (rather than src/) is part of
+# that: this image cannot import the application even by accident.
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements-mcp.txt .
+RUN pip install --no-cache-dir -r requirements-mcp.txt
+
+COPY src/claimbridge/mcp/server.py server.py
+
+# stdio transport: the MCP client owns this process's stdin/stdout.
+CMD ["python", "server.py"]

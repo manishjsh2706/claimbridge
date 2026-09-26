@@ -5,7 +5,9 @@
 #   unit          - pytest tests/unit, deliberately WITHOUT DATABASE_URL or
 #                   OPENAI_API_KEY so a unit test that quietly starts needing a
 #                   database or the network fails here instead of in production
-#   docker-build  - the image in Dockerfile still builds
+#   mcp           - pytest tests/mcp against a stand-in ClaimBridge, in the MCP
+#                   server's own dependency set
+#   docker-build  - both images still build
 #
 # The expensive job (e2e) spins up Postgres + Weaviate, runs the real
 # iteration-2 demo, the cross-tenant leakage suite and the golden eval with its
@@ -61,13 +63,31 @@ jobs:
       - name: pytest tests/unit
         run: pytest tests/unit -q
 
-  docker-build:
-    name: Docker image builds
+  mcp:
+    name: MCP server tools (no DB, no LLM, no network)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: docker build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      # Its own dependency set on purpose: the MCP SDK needs anyio 4 and the
+      # API pins anyio 3, and more to the point the MCP server has no business
+      # being able to import the application.
+      - run: pip install -r requirements-mcp.txt pytest
+      - name: pytest tests/mcp
+        run: pytest tests/mcp -q
+
+  docker-build:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build (api)
         run: docker build -t claimbridge:ci .
+      - name: docker build (mcp)
+        run: docker build -f Dockerfile.mcp -t claimbridge-mcp:ci .
 
   preflight:
     name: Is an OpenAI key configured?

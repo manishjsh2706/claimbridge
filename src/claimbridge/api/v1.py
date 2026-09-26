@@ -12,6 +12,7 @@ Versioned, tenant-scoped API - ClaimBridge
     GET  /v1/tenants/{tenant_id}/review-queue                            (Iteration 2)
     GET  /v1/tenants/{tenant_id}/communications/{id}                     (Iteration 2)
     POST /v1/tenants/{tenant_id}/communications/{id}/approve|publish|reject  (Iteration 2)
+    GET  /v1/whoami                                                      (Iteration 3+, MCP)
     GET  /v1/tenants/{tenant_id}/policy-search?q=                        (Iteration 3+, MCP)
     GET  /v1/tenants/{tenant_id}/codes?code=                             (Iteration 3+, MCP)
 
@@ -46,7 +47,7 @@ from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
-from src.claimbridge.auth import Principal, authenticate
+from src.claimbridge.auth import ROLE_PERMISSIONS, Principal, authenticate
 from src.claimbridge.resilience import VECTOR_BREAKER
 from src.claimbridge.db import read_session_scope, session_scope
 from src.claimbridge.intake import ClaimDetail, ClaimIntakeResponse, ClaimSubmission, get_claim_detail, submit_claim
@@ -597,4 +598,37 @@ def code_lookup_endpoint(
                        member_friendly_name=d.member_friendly_name, fields=dict(d.fields))
                for d in resolved["known"]],
         unknown=list(resolved["unknown"]),
+    )
+
+
+class WhoAmIOut(BaseModel):
+    principal_id: str
+    role: str
+    tenant_id: Optional[str] = None
+    permissions: List[str]
+
+
+@router.get("/whoami", response_model=WhoAmIOut,
+            summary="Which principal, role and tenant this API key belongs to")
+def whoami(x_api_key: str = Header(default=None)):
+    """
+    The only route that is not tenant-scoped, because its answer is *which*
+    tenant the caller is scoped to. A client that had to be told its own tenant
+    could also be told a different one; here the key decides and the caller
+    only finds out.
+
+    This is what the MCP server calls at startup: it learns its tenant from the
+    key and puts that in every later path, so no tool takes a tenant argument
+    and no prompt can talk it into another tenant's data.
+    """
+    with session_scope() as s:
+        principal = authenticate(s, x_api_key)
+    if principal is None:
+        raise HTTPException(status_code=401, detail="Missing or invalid X-Api-Key",
+                            headers={"WWW-Authenticate": "ApiKey"})
+    return WhoAmIOut(
+        principal_id=principal.principal_id,
+        role=principal.role,
+        tenant_id=principal.tenant_id,
+        permissions=sorted(ROLE_PERMISSIONS.get(principal.role, set())),
     )
