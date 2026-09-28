@@ -51,7 +51,31 @@ Concretely, the gap this project fills:
 The last row is the one that is hard, and the reason the system retrieves from
 each tenant's own policy documents rather than from a generic template.
 
-## The sample in this folder
+## The two PDFs in this folder
+
+**`cms-11819-reading-your-eob.pdf`** — the CMS publication itself, text and all,
+re-set as a readable two-page PDF. The words are transcribed from CMS
+Publication #11819 (Revision Date May 2022), a US Department of Health and Human
+Services publication and therefore public domain; the layout is re-set, so this
+reproduces the text faithfully rather than copying the page design. It carries a
+provenance box saying exactly that. It exists because the original link is often
+unreachable from outside the US.
+
+It includes the real example data from that publication: two medical-care lines
+totalling $406.60 billed, $120.27 allowed, $85.27 paid by the insurer and $35.00
+owed, with remark code PDC, plus all eight numbered explanations and the
+"Pay your bills" and "Appeals" sections.
+
+**`sample-eob-pacific-hmo.pdf`** — the same layout with this project's own
+CLAIM-PH-001 data.
+
+One detail the full transcription corrected: the real column order is
+`... Paid by Insurer | What You Owe | Remark Code`. The first draft of the
+Pacific sample had Remark Code before What You Owe, which is wrong, and is now
+fixed. Worth noting as a small lesson -- the first fetch gave a summary, and the
+summary listed the columns in a different order than the document does.
+
+### About the Pacific sample
 
 `sample-eob-pacific-hmo.pdf` is a one-page EOB built for the demo. Its layout
 follows the CMS sample -- the header block, the twelve claim-line columns ending
