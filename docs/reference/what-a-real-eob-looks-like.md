@@ -51,6 +51,25 @@ Concretely, the gap this project fills:
 The last row is the one that is hard, and the reason the system retrieves from
 each tenant's own policy documents rather than from a generic template.
 
+## The sample in this folder
+
+`sample-eob-pacific-hmo.pdf` is a one-page EOB built for the demo. Its layout
+follows the CMS sample -- the header block, the twelve claim-line columns ending
+in "What You Owe", the remark-code legend, the numbered reference guide and the
+appeals footer -- while the data is this project's own CLAIM-PH-001 fixture:
+Suresh Menon, Sound Orthopedics, office visit, $285 billed, $165 allowed, $132
+paid, $33 owed, CO-45.
+
+It carries a banner saying it is illustrative and not a real insurer document,
+and it should keep that banner. Pacific HMO is fictional and so is everyone on
+the page; a realistic-looking EOB without that line is a forgeable record, not a
+teaching aid.
+
+It exists because the CMS link is often unreachable from outside the US, and
+because putting the real input beside the system's output makes the argument in
+one screen: this page is what the member gets today, and the reviewer console
+shows what ClaimBridge produces from the same claim.
+
 ## Sources
 
 - CMS, "Reading Your Explanation of Benefits" (sample PDF):
