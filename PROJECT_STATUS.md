@@ -228,6 +228,22 @@ raised to 45 s because hybrid search embeds the query through OpenAI first.
    whole list at once and the pattern was obvious. A second way of reading the
    same data found something months of using the first way had not.
 
+6. **API keys can only be issued from a shell. Raised 2026-09-28.** `auth.issue_key`
+   is real production code -- it mints the key, stores only its sha256, scopes it to
+   a role and a tenant, and rotates on re-issue. What is missing is any way to call
+   it other than `scripts/api_keys.py` on the server.
+
+   So onboarding a tenant today means someone with shell access runs a command. That
+   is how plenty of B2B systems start, and key issuance *should* stay deliberate
+   rather than self-service -- but "an operator runs a command" is not a complete
+   answer, and it should not be presented as one.
+
+   The fix is not new logic, it is a second caller: an admin-only endpoint behind
+   the `admin` role, or a step in the tenant onboarding checklist that already
+   exists for Summit. Beyond that, the usual path is OAuth client credentials or
+   mTLS instead of a bearer key, with the secret living in a secrets manager rather
+   than in whatever the operator pasted it into.
+
 ---
 
 ## Legacy code (still in the repo, not used by v1)
