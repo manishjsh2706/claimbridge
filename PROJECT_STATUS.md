@@ -458,9 +458,46 @@ raised to 45 s because hybrid search embeds the query through OpenAI first.
       that case is the test that would have caught this.
    2. **The `template_fallback` rate is still unmeasured**, so a future
       regression of this kind is still invisible.
-   3. **The score-based citation filter is not done.** Still worth doing as the
-      defence for whenever the fallback legitimately runs, but it is no longer
-      urgent: the path that was reaching it on every run no longer does.
+   3. ~~**The score-based citation filter is not done.**~~ **Done 2026-09-30.**
+      `template_draft` now calls `template_citation_ids(ctx)` instead of
+      `sorted(ctx.sources)`: codes on the claim are always cited, plan policy
+      only for `PARTIAL`/`DENY` (where the guards require a reason to be backed),
+      and then only sections scoring at least `CITATION_SCORE_RATIO` (0.5) of the
+      best hit.
+
+      **The cut is relative to the top hit, not an absolute floor.** Reading
+      `vectorstore/client.py`, `similarity_score` carries two different meanings
+      under one name: Weaviate's hybrid ranking score on the hybrid path
+      (line 463, which is why the observed top hit was exactly 1.0) and
+      `1.0 - distance/2.0`, an absolute cosine, on the vector path (line 518).
+      Only the ratio between hits means the same thing in both, so a fixed
+      threshold would silently mean different things depending on which search
+      ran. A unit test pins this: scores `[0.40, 0.30, 0.05]` cite two sections,
+      where an absolute 0.5 floor would have cited none.
+
+      Scope turned out to be one function. The **member** template never had this
+      bug -- it cites `sorted(ctx.required_ids)`, codes only. Only the provider
+      template passed every retrieved source through.
+
+      Third contributing cause, found while fixing it: `build_draft_graph` is
+      called with `validate_template=False` for the provider, so the template's
+      output never reaches `guards.check_citations` at all. That is why four
+      irrelevant citations survived every guard, every test and every eval run --
+      nothing was looking. Worth revisiting whether the template should be
+      validated too, now that it is no longer the only thing standing between an
+      outage and a wrong-looking notice.
+
+      Tests: 7 new cases in `tests/unit/test_provider_template_citations.py`, run
+      against the function directly because no golden case reaches the template
+      path. `pytest tests/unit` 55/55 on the user's machine.
+
+      **Process note.** `tests/unit/test_evals.py` broke when the golden case was
+      added in the previous commit -- it asserted the corpus held exactly 11
+      cases -- and that was not caught then, because the golden eval was run and
+      the unit tests were not. It surfaced a step later. The test now asserts the
+      provided case ids **by name** rather than by count, which is the guarantee
+      it was actually there to give and does not need bumping every time a
+      regression case is added.
    Same lesson as issue 5: a second way of looking at the same data.
 
 8. **Eval and demo runs leave drafts in the live review queue. Found 2026-09-28.**

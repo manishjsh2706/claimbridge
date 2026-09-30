@@ -27,7 +27,7 @@ Failing twice -> deterministic template, flagged for review.
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from sqlalchemy.orm import Session
 
@@ -198,6 +198,43 @@ Respond with ONE JSON object:
     return system, user
 
 
+# How close to the best-scoring policy hit a section must be before the
+# template cites it. Relative, not absolute, on purpose: `similarity_score` is
+# Weaviate's hybrid ranking score on the hybrid path and a cosine similarity on
+# the vector path, so only the ratio between hits means the same thing in both.
+CITATION_SCORE_RATIO = 0.5
+
+
+def template_citation_ids(ctx: SummaryContext) -> Set[str]:
+    """
+    Which sources the template cites.
+
+    The model path selects; the template used to attach `sorted(ctx.sources)` --
+    every retrieved source -- which put a denial-mapping policy on an APPROVE
+    notice (issue 7). Retrieval is deliberately recall-oriented, so "retrieved"
+    was never the same question as "supports this notice".
+
+    Codes on the claim are always cited. Plan policy is cited only where the
+    guards ask for a reason to be backed by one -- PARTIAL and DENY -- and then
+    only sections scoring close to the best hit.
+    """
+    ids: Set[str] = set(ctx.required_ids)
+    if ctx.adjudication.outcome not in ("PARTIAL", "DENY"):
+        return ids
+    scored = [(float(h.get("similarity_score") or 0.0), f"P{i}")
+              for i, h in enumerate(ctx.policy_hits, 1)]
+    if not scored:
+        return ids
+    top = max(score for score, _ in scored)
+    if top <= 0:
+        # No usable scores: keep the best-ranked hit rather than none, because
+        # PARTIAL and DENY must cite a policy.
+        ids.add(scored[0][1])
+        return ids
+    ids |= {pid for score, pid in scored if score >= CITATION_SCORE_RATIO * top}
+    return ids
+
+
 def template_draft(ctx: SummaryContext) -> Dict[str, Any]:
     """
     The model-free notice: everything here comes from the adjudication and the
@@ -211,7 +248,7 @@ def template_draft(ctx: SummaryContext) -> Dict[str, Any]:
         "correction_actions": template_actions(ctx),
         "resubmission_instructions": "Resubmit a corrected claim, or file a provider appeal, as "
                                      "described in the cited plan policy.",
-        "why_citation_ids": sorted(ctx.sources),
+        "why_citation_ids": sorted(template_citation_ids(ctx)),
     }
 
 

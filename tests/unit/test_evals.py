@@ -42,10 +42,23 @@ def failed(results):
     return {r.name for r in results if not r.passed}
 
 
+# The corpus the mentor provided. Regression cases we add ourselves live in
+# their own file and load on top of these, so this is asserted by name rather
+# than as a total that would have to be bumped every time one is added --
+# bumping a count is not the same guarantee as "the provided cases are intact".
+PROVIDED_CASE_IDS = {
+    "ph-001-member", "ph-004-member", "adv-injection", "ph-002-validation",
+    "ph-004-provider", "ph-fac-001-member", "ph-rx-001-provider",
+    "cp-001-member", "cp-002-provider", "leak-pacific-query", "se-001-onboarding",
+}
+
+
 def test_provided_golden_files_load_and_dedupe():
     cases = load_golden_cases(resources_dir() / "golden")
     ids = [c.id for c in cases]
-    assert len(ids) == len(set(ids)) == 11
+    assert len(ids) == len(set(ids)), f"duplicate case ids in {ids}"
+    missing = PROVIDED_CASE_IDS - set(ids)
+    assert not missing, f"provided cases went missing: {sorted(missing)}"
     assert {"ph-001-member", "ph-004-member"} == {c.id for c in cases if skip_reason(c, 1) is None}
 
 
