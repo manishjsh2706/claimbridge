@@ -1,0 +1,1 @@
+{"id": "ph-003-prov-nocodes", "tenant_id": "pacific-hmo", "iteration_min": 2, "fixture_claim_id": "CLAIM-PH-003", "audience": "provider", "scenario": "approve_no_codes_provider", "expected_outcome": "APPROVE", "expected_generation_mode": "llm", "rubric_min_scores": {"accuracy": 4}}

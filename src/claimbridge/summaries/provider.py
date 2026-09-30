@@ -47,7 +47,7 @@ from .schemas import (
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "provider-notice-v2"
+PROMPT_VERSION = "provider-notice-v3"
 
 # Deterministic billing actions per code: the template fallback, and a
 # checklist the reviewer can compare the model's wording against.
@@ -156,8 +156,11 @@ HARD RULES
 1. You EXPLAIN the adjudication. Never change or question it. The outcome is {a.outcome}.
 2. Use ONLY the FACTS and SOURCES below. No outside payer rules.
 3. Money: only amounts that appear in FACTS, written exactly as shown. Never calculate.
-4. List in "why_citation_ids" the IDs of the SOURCES that support the reasons. Every code source
-   [C...] must be cited. For a DENY or PARTIAL, also cite the plan policy source(s) [P...] that apply.
+4. List in "why_citation_ids" the IDs of the SOURCES that support the reasons. Cite ONLY IDs that
+   appear in SOURCES below -- never an ID that is not listed there. Every code source [C...] that IS
+   listed must be cited; if SOURCES lists no [C...] entries, this claim carries no codes and you must
+   not cite one. For a DENY or PARTIAL, also cite the plan policy source(s) [P...] that apply. If no
+   source applies, use an empty list.
 5. "correction_actions": concrete billing steps (what to correct, what to obtain, what to attach).
    Never make "contact member services" the only action.
 6. "resubmission_instructions": how to resubmit a corrected claim or appeal, from the SOURCES.
@@ -170,7 +173,7 @@ Respond with ONE JSON object:
   "technical_summary": "2-4 sentences: outcome, codes applied and the rule behind them",
   "correction_actions": ["..."],
   "resubmission_instructions": "...",
-  "why_citation_ids": ["C1", "P1"]
+  "why_citation_ids": ["<IDs taken from SOURCES below; [] if none apply>"]
 }}"""
     d = c.claim_data or {}
     claim_view = {k: d.get(k) for k in ("cpt", "cpt_hcpcs", "icd10", "modifiers", "place_of_service",

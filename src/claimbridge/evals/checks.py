@@ -80,6 +80,15 @@ def run_checks(case: GoldenCase, http_status: int, body: Optional[Dict[str, Any]
     results.append(CheckResult("output_guards_passed", bool(validation.get("passed")),
                                "; ".join(validation.get("issues") or [])))
 
+    # `passed` is true for a template fallback too -- the fallback is valid, just
+    # duller. A case that should come off the model path says so explicitly,
+    # otherwise a silent slide into the fallback never fails anything (issue 7).
+    exp_mode = case.get("expected_generation_mode")
+    if exp_mode:
+        got = validation.get("generation_mode")
+        results.append(CheckResult("expected_generation_mode", got == exp_mode,
+                                   f"expected {exp_mode}, got {got}"))
+
     req = [normalize_code(c) for c in case.get("required_citations") or []]
     if req:
         miss = _missing(req, [normalize_code(c.get("code") or "") for c in citations if c.get("code")])
@@ -155,6 +164,14 @@ def run_provider_checks(case: GoldenCase, http_status: int, body: Optional[Dict[
                                    f"expected {exp}, got {notice.get('outcome')}"))
     results.append(CheckResult("output_guards_passed", bool((body.get("validation") or {}).get("passed")),
                                "; ".join((body.get("validation") or {}).get("issues") or [])))
+
+    # See the note in run_checks: a template fallback passes the guards, so it
+    # has to be asserted against separately or it regresses silently (issue 7).
+    exp_mode = case.get("expected_generation_mode")
+    if exp_mode:
+        got = (body.get("validation") or {}).get("generation_mode")
+        results.append(CheckResult("expected_generation_mode", got == exp_mode,
+                                   f"expected {exp_mode}, got {got}"))
 
     codes_on_notice = set((notice.get("codes") or {}).get("carc", []) + (notice.get("codes") or {}).get("rarc", []))
     req = [normalize_code(c) for c in case.get("required_citations") or []]

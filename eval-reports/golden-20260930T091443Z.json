@@ -1,0 +1,139 @@
+{
+  "run_id": "20260930T091443Z",
+  "base_url": "http://localhost:8000",
+  "iteration": 3,
+  "judge": {
+    "model": "gpt-4o",
+    "prompt_version": "judge-v5"
+  },
+  "gate": {
+    "threshold": 0.85,
+    "pass_rate": 1.0,
+    "passed": true,
+    "note": ""
+  },
+  "counts": {
+    "total": 1,
+    "executed": 1,
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0
+  },
+  "cases": [
+    {
+      "id": "ph-003-provider-nocodes",
+      "tenant_id": "pacific-hmo",
+      "claim_id": "CLAIM-PH-003",
+      "audience": "provider",
+      "scenario": "approve_no_codes_provider",
+      "iteration_min": 2,
+      "status": "executed",
+      "correlation_id": "eval-20260930T091443Z-ph-003-provider-nocodes",
+      "http_status": 201,
+      "communication_id": 10212,
+      "generation_mode": "llm",
+      "checks": [
+        {
+          "name": "api_created",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "expected_outcome",
+          "passed": true,
+          "detail": "expected APPROVE, got APPROVE"
+        },
+        {
+          "name": "output_guards_passed",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "name": "expected_generation_mode",
+          "passed": true,
+          "detail": "expected llm, got llm"
+        }
+      ],
+      "validation_issues": [],
+      "retrieved_sections": [
+        "pacific-hmo-plan-summary#preventive.wellness",
+        "pacific-hmo-plan-summary#prior-auth.imaging",
+        "pacific-hmo-plan-summary#appeals.member",
+        "pacific-hmo-plan-summary#fee-schedule.allowed-amounts"
+      ],
+      "summary": {
+        "tenant_id": "pacific-hmo",
+        "claim_id": "CLAIM-PH-003",
+        "audience": "provider",
+        "outcome": "APPROVE",
+        "status": "DRAFT",
+        "claim_identifiers": {
+          "claim_id": "CLAIM-PH-003",
+          "member_id": "PH-10011223",
+          "claim_type": "professional",
+          "date_of_service": "2025-11-18",
+          "provider_name": "Pacific Primary Care",
+          "provider_npi": null,
+          "pharmacy_npi": null,
+          "place_of_service": null
+        },
+        "technical_summary": "The claim has been APPROVED with a billed amount of $45.00 and an allowed amount of $38.00. The plan paid the full allowed amount of $38.00, resulting in no member responsibility. The adjudication indicates that there were no adjustment codes applied.",
+        "codes": {
+          "carc": [],
+          "rarc": []
+        },
+        "amounts": {
+          "billed": "45.00",
+          "allowed": "38.00",
+          "plan_paid": "38.00",
+          "you_owe": "0.00",
+          "currency": "USD"
+        },
+        "correction_actions": [],
+        "resubmission_instructions": "No resubmission is necessary as the claim has been approved.",
+        "policy_citations": [],
+        "code_citations": [],
+        "billing_codes_reference": {
+          "cpt": "80053",
+          "icd10": [
+            "E11.9"
+          ],
+          "ndc": null,
+          "revenue_code": null,
+          "type_of_bill": null,
+          "modifiers": []
+        },
+        "validation_errors": [],
+        "appeal_path": "To dispute this determination, submit a provider appeal to Pacific HMO through the provider portal or provider line with the claim ID, the corrected claim or supporting documentation, and the codes listed in this notice."
+      },
+      "judge": {
+        "scores": {
+          "accuracy": {
+            "score": 5,
+            "reason": "The notice accurately reflects the adjudication outcome, codes, amounts, and the stated reason matches the facts exactly."
+          },
+          "grounding": {
+            "score": 3,
+            "reason": "The notice does not cite any specific policy or code sources, but the information is consistent with the provided facts."
+          },
+          "actionability": {
+            "score": 3,
+            "reason": "The notice provides generic steps for appeal but does not specify any corrections needed as the claim is approved."
+          },
+          "technical_completeness": {
+            "score": 5,
+            "reason": "All necessary identifiers, codes, and amounts are present and match the facts."
+          }
+        },
+        "unsupported_claims": [],
+        "model": "gpt-4o",
+        "prompt_version": "judge-v5-provider",
+        "total_tokens": 1233,
+        "critical_average": 4.0,
+        "rubric_passed": true
+      },
+      "failure_reasons": [],
+      "passed": true
+    }
+  ]
+}

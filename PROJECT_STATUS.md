@@ -244,6 +244,271 @@ raised to 45 s because hybrid search embeds the query through OpenAI first.
    mTLS instead of a bearer key, with the secret living in a secrets manager rather
    than in whatever the operator pasted it into.
 
+7. **The template fallback cites every retrieved section, and can cite one that
+   contradicts the outcome. Found 2026-09-28, by reading the review queue.**
+   `summaries/provider.py::template_draft` ends with
+   `"why_citation_ids": sorted(ctx.sources)` -- it attaches *all* retrieved
+   sources rather than selecting the relevant ones. The LLM path selects; the
+   fallback does not.
+
+   Live evidence from `GET /tenants/pacific-hmo/review-queue`:
+
+   - Communication 10174 (CLAIM-PH-003, provider, `model: "template-fallback
+     (llm: gpt-4o-mini)"`, outcome APPROVE, no CARC/RARC codes) carries four
+     policy citations: `preventive.wellness`, `prior-auth.imaging`,
+     `appeals.member`, `fee-schedule.allowed-amounts`. None of them bears on the
+     claim.
+   - Communication 10180 (CLAIM-ADV-001, provider, same fallback, outcome
+     APPROVE) cites `denial.prior-auth` -- "Prior Authorization Rules, Denial
+     mapping" -- **on an approved claim**. Nothing in the text is false, but a
+     biller reading an approval notice with a denial-mapping policy attached is
+     being actively misled about what happened.
+   - For contrast, communication 10194 (CLAIM-PH-9001, provider, LLM path)
+     cites exactly two: `CO-45` and `fee-schedule.allowed-amounts`, both used.
+
+   Severity: the fallback's whole justification is that it is always true and
+   never needs review. Over-citing does not make it untrue, but it does make it
+   misleading, which erodes that justification. It is worse for the provider
+   audience than the member one, because a biller acts on cited policy.
+
+   The fix is to filter in `template_draft` rather than pass `ctx.sources`
+   through: at minimum drop denial-related sections when the outcome is
+   `APPROVE`, and prefer citing only sections tied to a code actually on the
+   claim, falling back to no policy citation when none applies. Requires a
+   matching relaxation in `guards.check_citations` if it currently requires a
+   policy citation for some outcomes -- check before changing.
+
+   How it surfaced: no test asserts citation *relevance* on the fallback path --
+   the guards check that cited IDs exist and are cited correctly, not that they
+   are apt. Reading real queue output found in one pass what the suite had not.
+
+   **Better fix found 2026-09-28, by running `GET /policy-search` directly.**
+   Retrieval already knows which sections are relevant -- it returns a score,
+   and the gap is not subtle. For the query "what happens when the provider
+   bills more than the allowed amount" against `pacific-hmo`:
+
+   | section | score |
+   |---|---|
+   | `fee-schedule.allowed-amounts` | **1.0** |
+   | `denial.prior-auth` | 0.240 |
+   | `provider.prior-auth-submission` | 0.214 |
+   | `appeals.member` | 0.116 |
+
+   Roughly 4x between the top hit and the next. The scores are available where
+   the fix belongs: `policy_search` returns `similarity_score` on every hit, and
+   `SummaryContext.policy_hits` keeps the raw hit dicts
+   (`summaries/member.py`, the loop at ~line 230). What drops the score is the
+   `Citation` model in `summaries/schemas.py`, which has `id`, `source_type`,
+   `label`, `code`, `document`, `section` -- and no score field. So the signal is
+   already in memory, one attribute away, and nothing reads it.
+
+   This is a better fix than the outcome-based filtering sketched above: a score
+   floor (or "keep the top hit plus anything within a factor of it") is simpler,
+   needs no per-outcome rules, and would have dropped `denial.prior-auth` from
+   the approved-claim notice on its own, without anyone having to anticipate that
+   specific pairing. Carry `score` onto `Citation`, filter in `template_draft`,
+   and pick the threshold from the golden corpus rather than by guess. Verify
+   against `guards.check_citations` first: it may require a policy citation for
+   some outcomes, in which case "no policy citation" must become a legal state.
+
+   Worth noting that the scores were visible in the summary pipeline the whole
+   time; they only became obvious when the retrieval step was called on its own
+   instead of through the thing that consumes it.
+
+   **Root cause found 2026-09-28, in the audit log. The over-citation is a
+   symptom; the fallback should not be running at all here.** Every
+   `PROVIDER_NOTICE_GENERATED` event for CLAIM-ADV-001 -- five runs between
+   2026-09-22 and 2026-09-24, across `provider-notice-v1` and `v2` -- carries the
+   identical record:
+
+   ```
+   "generation_mode": "template_fallback",
+   "attempts": 2,
+   "validation_issues": ["LLM draft rejected: Cited source IDs that were not
+                          provided: ['C1']"]
+   ```
+
+   Five out of five, same message. This is deterministic, not an LLM outage.
+
+   `C1` is a *code* citation id: `summaries/member.py` mints `C{i}` from
+   `ctx.known_codes`. CLAIM-ADV-001 has `carc: []` and `rarc: []`, so no `C` id
+   exists in `ctx.sources`. The model cites `C1` anyway, both attempts;
+   `guards.check_citations` correctly rejects it; `MAX_ATTEMPTS = 2` is exhausted
+   and `template_draft` runs -- which then attaches all four retrieved sections,
+   producing the misleading `denial.prior-auth` citation on an APPROVE outcome.
+
+   So the chain is: the provider prompt induces a code citation on a claim with
+   no codes -> validator rejects -> retries exhausted -> fallback -> over-citation.
+   Fixing the prompt (state explicitly that code citations are omitted when the
+   claim carries no CARC/RARC codes, and that a notice with no code citation is
+   valid) removes the fallback from this path entirely. The score-based citation
+   filter above is still worth doing -- it is the defence for whenever the
+   fallback *does* legitimately run -- but it is second in priority now.
+
+   **Confirmed by controlled comparison, 2026-09-30.** `POST /provider-notice`
+   run by hand on CLAIM-PH-9001 -- same endpoint, same `provider-notice-v2`
+   prompt, same tenant, same four retrieved sections -- but this claim *does*
+   carry a CARC code (`CO-45`):
+
+   | | CLAIM-ADV-001 (no codes) | CLAIM-PH-9001 (CO-45) |
+   |---|---|---|
+   | `attempts` | 2 | **1** |
+   | `generation_mode` | `template_fallback` | **`llm`** |
+   | `validation_issues` | `["... not provided: ['C1']"]` | `[]` |
+   | policy citations | 4 of 4 retrieved | **1 of 4 retrieved** |
+   | code citations | 0 | 1 (`C1` = CO-45) |
+
+   The presence of a CARC code is the only meaningful difference, and it flips
+   both symptoms at once. That settles the diagnosis: the prompt induces a code
+   citation unconditionally, which is unsatisfiable when the claim has no codes.
+
+   The same comparison also shows the LLM path *does* select its citations --
+   four sections retrieved, one cited, and the right one -- while
+   `template_draft` cites all four. The selection behaviour that is missing from
+   the fallback already exists on the model path.
+
+   Why nothing caught it for six days: the fallback's output is *valid*, so no
+   guard fires and no test fails. The signal was only ever in
+   `validation_issues` inside the audit event, which nothing reads and no alert
+   watches. A `generation_mode == "template_fallback"` rate, or an alert on a
+   repeated `validation_issues` string, would have surfaced this on day one.
+   That metric does not exist yet and should.
+
+   **FIXED 2026-09-30 (prompt half). `provider-notice-v2` -> `v3`.** The cause
+   was narrower than "the prompt induces a code citation": HARD RULE 4 was
+   already correct, but the response-shape example below it hardcoded
+   `"why_citation_ids": ["C1", "P1"]`, and the model copied the example. A
+   few-shot example overriding the instruction beside it.
+
+   Change, in `summaries/provider.py::build_prompts` only -- guards, template,
+   graph and schemas untouched:
+   - rule 4 now states explicitly that only IDs appearing in SOURCES may be
+     cited, that no `[C...]` entries means the claim carries no codes and none
+     must be cited, and that an empty list is valid;
+   - the example no longer names any ID.
+
+   `guards.check_citations` needed no change, verified by reading it: for an
+   `APPROVE` outcome it requires nothing, so an empty `why_citation_ids` was
+   always legal. The only failing check was `unknown` -- a cited ID that was
+   never provided.
+
+   **Verified on the user's machine, 2026-09-30, after `docker compose restart`:**
+
+   | | CLAIM-ADV-001 (APPROVE, no codes) | CLAIM-PH-9001 (PARTIAL, CO-45) |
+   |---|---|---|
+   | before (v2) | `attempts` 2, `template_fallback`, 4 policy citations, `issues: ["...not provided: ['C1']"]` | `attempts` 1, `llm`, C1 + P1 |
+   | after (v3) | **`attempts` 1, `llm`, 0 citations, `issues: []`** | `attempts` 1, `llm`, C1 + P1 (**unchanged**) |
+
+   The second column is the regression check that mattered: the new "empty list
+   is valid" wording did not make the model drop citations where the guards
+   require them. `denial.prior-auth` is still *retrieved* for ADV-001 -- retrieval
+   is unchanged, as intended -- but is no longer cited.
+
+   Also: `pytest tests/unit` 48/48, and the golden eval 11/11 (100%, gate 85%).
+   `cp-001-member` failed when re-run alone immediately afterwards, with the
+   `oon.surgical` / `oon.balance-billing` split of issue 3 -- the same case had
+   passed in the full run six minutes earlier, which is that issue's
+   intermittency demonstrated rather than a regression from this change.
+
+   **Still open after this fix:**
+
+   **Golden case added 2026-09-30: `ph-003-prov-nocodes`** in
+   `resources/golden/regression-added.jsonl` (a new file -- the mentor's provided
+   corpus is left untouched; `load_golden_cases` globs `*.jsonl` and de-dupes by
+   id). CLAIM-PH-003 is the clean APPROVE fixture that CLAIM-ADV-001 is built on
+   top of, so it is exactly the shape that was failing: provider notice, APPROVE,
+   no CARC/RARC codes.
+
+   Adding the case alone would not have been a test. **None of the existing check
+   keys can catch this bug:** `expected_outcome` passed on the broken output,
+   `output_guards_passed` passed because a template fallback *is* valid,
+   `required_policy_sections` asserts sections are cited rather than that extra
+   ones are not, `forbidden_phrases` reads visible text and not citations, and
+   `forbidden_doc_prefixes` looks for foreign tenants while
+   `pacific-hmo-prior-auth-rules` belongs to this one. The case would have passed
+   on `v2`.
+
+   So `evals/checks.py` gained one check key, `expected_generation_mode`, in both
+   `run_checks` and `run_provider_checks`. A case that must come off the model
+   path now says so, and a silent slide into the fallback fails.
+
+   Verified on the user's machine 2026-09-30: the case passes on `v3`, and the
+   report confirms the new check actually ran rather than being skipped --
+   `expected_generation_mode -> True expected llm, got llm`, with
+   `generation_mode: "llm"` on the case record.
+
+   **Judge rubric blind spot, noticed while adding this case.** The judge scored
+   `grounding` 3 ("does not cite any specific policy or code sources") and
+   `actionability` 3 ("does not specify any corrections needed as the claim is
+   approved"). Both observations are true and both describe *correct* behaviour:
+   this claim carries no codes and nothing needs correcting. The rubric treats
+   citations and actions as always-good, so a "nothing to do" case cannot score
+   above 3 on those two dimensions. The case still passes on `accuracy` 5, but it
+   means the `CRIT AVG 4.0` on this row is a rubric artifact, not a quality
+   signal, and the number should not be compared against the 5.0 rows. Worth a
+   rubric amendment later; not worth lowering the threshold to make the number
+   look tidy.
+
+   1. ~~**No golden case covers the failing shape.**~~ **Done, above.** Comparing the 24-Sep and
+      30-Sep reports, *no* case in the corpus has ever produced
+      `generation_mode: "template_fallback"` -- every provider case was already
+      `llm` or `deterministic`, before and after. "Provider notice, APPROVE
+      outcome, no CARC/RARC codes" is simply not a golden case, which is why the
+      eval sat at 100% for six days while the bug ran in production data. Adding
+      that case is the test that would have caught this.
+   2. **The `template_fallback` rate is still unmeasured**, so a future
+      regression of this kind is still invisible.
+   3. **The score-based citation filter is not done.** Still worth doing as the
+      defence for whenever the fallback legitimately runs, but it is no longer
+      urgent: the path that was reaching it on every run no longer does.
+   Same lesson as issue 5: a second way of looking at the same data.
+
+8. **Eval and demo runs leave drafts in the live review queue. Found 2026-09-28.**
+   Of the six communications sitting at `PENDING_REVIEW` for `pacific-hmo`, four
+   were created by `eval:golden-runner` and `cli:adjuster-demo`, not by any real
+   submission. `created_by` records this honestly, so it is diagnosable -- but a
+   reviewer opening the queue sees test data mixed with real work, and any queue-depth
+   metric is wrong.
+
+   Options: run evals under a dedicated throwaway tenant (the pattern
+   `scripts/index_check.py` already uses), or have the eval runner clean up the
+   communications it created. The first is safer -- it needs no delete path.
+
+9. **Open question: four-eyes covers approve but not publish. Raised 2026-09-28.**
+   `review/state.py::transition` enforces the author/approver split on exactly one
+   edge:
+
+   ```python
+   if to == "APPROVED" and actor == comm.created_by:
+       raise TransitionRejected(..., {"reason": "four_eyes"})
+   ```
+
+   `PUBLISHED` has no actor check at all -- only that the previous state is
+   `APPROVED` and the tenant is `LIVE`. Verified live on 2026-09-28: the same
+   `reviewer-demo` principal approved communication 10193 and then published it,
+   both calls succeeding.
+
+   Two readings, and this is a genuine design question rather than a defect:
+
+   - *Approve is the decision, publish is the send.* One person judged the
+     content; pressing send afterwards adds no second judgement to make. On this
+     reading the current behaviour is correct and a second check would be
+     ceremony.
+   - *One principal can move a letter from queue to member with no other human
+     involved.* The author/approver split then holds only against the pipeline's
+     `system:pipeline` actor, which is not a person anyway -- so in practice
+     four-eyes today means "a human looked", not "two humans looked".
+
+   Which reading is right depends on what the control is for. If it exists to
+   catch a bad draft, approve is the right place and publish needs nothing. If it
+   exists so that no single individual can put a communication in front of a
+   member, then publish needs its own actor check, and `approved_by != actor`
+   would be the rule.
+
+   Worth deciding deliberately and writing down either way, because "we only
+   check on approve" currently reads as an oversight rather than a choice. Raise
+   with the mentor alongside PR-1 and CP-001.
+
 ---
 
 ## Legacy code (still in the repo, not used by v1)
